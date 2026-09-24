@@ -9,7 +9,7 @@ deal's ``commission_on_expansion`` column (D-17).
 import hashlib
 from decimal import Decimal
 
-from calculator.models import CommissionRule, Deal, Tier
+from calculator.models import CommissionRule, Deal, FeeDeduction, Tier
 
 _YEAR_1 = Tier(from_month=1, to_month=12, pct=Decimal(50))
 _YEAR_2_ON = Tier(from_month=13, to_month=None, pct=Decimal(30))
@@ -23,7 +23,9 @@ _MEANING: dict[str, dict] = {
     # "Actualizar Excel pero NO PAGAR - 35% - 24 meses Sobre TOTALIDAD"
     "D03": {"tiers": (Tier(from_month=1, to_month=24, pct=Decimal(35)),), "do_not_pay": True},
     # "... deben el partner fee de 1.500usd ... 50% año 1 y 30% año 2 en adelante ..."
-    "D04": {"tiers": (_YEAR_1, _YEAR_2_ON), "fee": Decimal(1500)},
+    # "Ir descontando" doesn't say how much per payment (D-13).
+    "D04": {"tiers": (_YEAR_1, _YEAR_2_ON),
+            "fee": FeeDeduction(total=Decimal(1500), mode="unspecified")},
     # "50% año 1 - 30% año 2 en adelante (incluye revenue exp)"
     "D05": {"tiers": (_YEAR_1, _YEAR_2_ON)},
     # "50% - 1er año": 12 months at most (D-11)

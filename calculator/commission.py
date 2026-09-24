@@ -10,7 +10,8 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from calculator.data import InputData
 from calculator.models import (
-    ApprovedPayment, CommissionLine, CommissionRule, Deal, Payment, Tier, TierSlice, Trace,
+    ApprovedPayment, CommissionLine, CommissionRule, Deal, FeeDeduction, Payment, Tier,
+    TierSlice, Trace,
 )
 from calculator.payments import FetchResult
 
@@ -80,6 +81,18 @@ def memo(deal: Deal, start: int, end: int, remaining: int | None) -> str:
     return f"{deal.nombre_negocio} - comision pago m{start}-m{end} - restan {left}"
 
 
+def fee_deduction(fee: FeeDeduction, gross: Decimal, balance: Decimal) -> Decimal:
+    """How much of the fee this commission recovers (D-13). Never more than
+    the balance owed or the commission itself. ``fee.mode`` must be known."""
+    if fee.mode == "fixed_per_payment":
+        wanted = fee.value
+    elif fee.mode == "pct_of_commission":
+        wanted = gross * fee.value / 100
+    else:  # as_much_as_possible
+        wanted = gross
+    return min(wanted, balance, gross)
+
+
 def round_money(amount: Decimal) -> Decimal:
     """Round once, at the end, to cents, half-up (D-14)."""
     return amount.quantize(CENT, rounding=ROUND_HALF_UP)
@@ -87,8 +100,15 @@ def round_money(amount: Decimal) -> Decimal:
 
 # --- One payment ----------------------------------------------------------
 
-def compute_line(deal: Deal, rule: CommissionRule, payment: Payment, already: int) -> CommissionLine:
-    """The line for one new payment of a deal whose inputs are trusted."""
+def compute_line(
+    deal: Deal, rule: CommissionRule, payment: Payment, already: int,
+    fee_balance: Decimal | None = None,
+) -> CommissionLine:
+    """The line for one new payment of a deal whose inputs are trusted.
+
+    ``fee_balance`` is what's still owed of the rule's fee, or None when it
+    can't be known.
+    """
     covered = payment.payment_term.months
     base = base_mensual(deal, payment)
     common = {
@@ -100,10 +120,17 @@ def compute_line(deal: Deal, rule: CommissionRule, payment: Payment, already: in
     }
     months = eligible_range(already, covered, rule.max_months)
 
-    def trace(slices=(), flags=()) -> Trace:
+    def trace(slices=(), flags=(), **fee) -> Trace:
         return Trace(rule=rule, months_before=already, months_in_payment=covered,
                      payment_amount=payment.amount, base_mensual=base,
-                     slices=tuple(slices), flags=tuple(flags))
+                     slices=tuple(slices), flags=tuple(flags), **fee)
+
+    # A client pays exactly what they owe or more (expansion); less is an
+    # error in the payment, whatever the base (D-08).
+    if payment.amount / covered < deal.amount_by_contract:
+        return CommissionLine(**common, estado="requiere_revision", trace=trace(),
+                              reason=(f"payment of {payment.amount} for {covered} month(s) is below "
+                                      f"the contract amount of {deal.amount_by_contract}/month"))
 
     if months is None:
         return CommissionLine(**common, estado="no_corresponde", trace=trace(),
@@ -120,24 +147,38 @@ def compute_line(deal: Deal, rule: CommissionRule, payment: Payment, already: in
         return CommissionLine(**common, estado="no_corresponde", trace=trace(slices, flags),
                               reason="the deal's notes say not to pay")
 
-    # PENDING D-13: how the partner fee is deducted. Until it's decided, the
-    # line is not paid.
+    gross = sum((s.amount for s in slices), Decimal(0))
+    fee_fields = {}
     if rule.fee is not None:
-        return CommissionLine(**common, estado="requiere_revision", trace=trace(slices, flags),
-                              reason=f"partner fee of {rule.fee} to deduct; rule pending (D-13)")
-
-    # PENDING D-08: a payment below the contract amount on a contract base.
-    if not deal.commission_on_expansion and payment.amount / covered < deal.amount_by_contract:
-        return CommissionLine(**common, estado="requiere_revision", trace=trace(slices, flags),
-                              reason="payment is below the contract amount; rule pending (D-08)")
+        if rule.fee.mode == "unspecified":
+            return CommissionLine(**common, estado="requiere_revision", trace=trace(slices, flags),
+                                  reason=(f"partner fee of {rule.fee.total} to deduct, but the rule "
+                                          "doesn't say how much per payment (D-13)"))
+        if fee_balance is None:
+            return CommissionLine(**common, estado="requiere_revision", trace=trace(slices, flags),
+                                  reason=("partner fee balance unknown: the deal has approved payments "
+                                          "and nothing records how much fee they deducted (D-13)"))
+        deducted = fee_deduction(rule.fee, gross, fee_balance)
+        fee_fields = {"gross_amount": gross, "fee_deducted": deducted,
+                      "fee_balance_after": fee_balance - deducted}
+    net = gross - fee_fields.get("fee_deducted", 0)
 
     remaining = remaining_after(end, rule.max_months)
+    if remaining == 0 and fee_fields.get("fee_balance_after", 0) > 0:
+        # The rule ends here with fee still owed and no later commission to
+        # deduct it from. Collecting it is a business decision (D-13).
+        return CommissionLine(**common, estado="requiere_revision",
+                              trace=trace(slices, flags, **fee_fields),
+                              reason=(f"the rule ends at m{end} with "
+                                      f"{round_money(fee_fields['fee_balance_after'])} of the partner fee "
+                                      "still owed and no later commission to deduct it from (D-13)"))
+
     return CommissionLine(
         **common,
-        monto_a_comisionar=round_money(sum((s.amount for s in slices), Decimal(0))),
+        monto_a_comisionar=round_money(net),
         estado=estado(remaining),
         memo=memo(deal, start, end, remaining),
-        trace=trace(slices, flags),
+        trace=trace(slices, flags, **fee_fields),
     )
 
 
@@ -158,6 +199,8 @@ def build_lines(
     blocked = inputs.blocked_deals
     approved_ids = {a.payment_id for a in inputs.approved}  # step 5 (D-05)
     running = months_already(inputs.approved, blocked)
+    with_history = {a.deal_id for a in inputs.approved}
+    fee_owed: dict[str, Decimal | None] = {}  # deal_id → fee balance, as lines are built
     held: dict[str, str] = {}  # deal_id → why its later payments can't be computed
 
     def review(deal_id, payment_id, reason, partner=None):
@@ -188,8 +231,14 @@ def build_lines(
             continue
 
         already = running.get(p.deal_id, 0)
-        line = compute_line(deal, rule, p, already)
+        if rule.fee is not None and p.deal_id not in fee_owed:
+            # With approved history, part of the fee may already be recovered,
+            # and nothing records how much the old manual process deducted (D-13).
+            fee_owed[p.deal_id] = None if p.deal_id in with_history else rule.fee.total
+        line = compute_line(deal, rule, p, already, fee_owed.get(p.deal_id))
         lines.append(line)
+        if line.trace and line.trace.fee_balance_after is not None:
+            fee_owed[p.deal_id] = line.trace.fee_balance_after
         if line.estado == "requiere_revision":
             # This payment's months are undecided, so any later one would be a guess.
             held[p.deal_id] = f"an earlier payment ({p.payment_id}) of this deal needs review"

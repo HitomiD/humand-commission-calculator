@@ -10,7 +10,9 @@ from calculator.commission import (
     build_lines, eligible_range, estado, months_already, tier_breakdown,
 )
 from calculator.data import DataIssue, load_inputs
-from calculator.models import ApprovedPayment, CommissionRule, Payment, Tier, tier_issues
+from calculator.models import (
+    ApprovedPayment, CommissionRule, FeeDeduction, Payment, Tier, tier_issues,
+)
 from calculator.payments import FetchResult, PaymentError
 from calculator.reference_rules import reference_rule
 from tests.test_input_models import _mock_payments
@@ -60,9 +62,10 @@ def test_one_line_per_new_payment(lines):
                              "D05_p05", "D06_p09", "D07_p01", "D08_p13"]
 
 
-def test_fee_is_pending(lines):
+def test_fee_without_a_stated_mechanism_goes_to_review(lines):
     line = lines["D04_p01"]
-    assert line.estado == "requiere_revision" and "D-13" in line.reason
+    assert line.estado == "requiere_revision"
+    assert "doesn't say how much per payment" in line.reason
     assert line.monto_a_comisionar == 0
 
 
@@ -156,3 +159,87 @@ def test_rule_with_issues_goes_to_review():
     fetched = FetchResult([_payment("D01_p06")])
     [line] = build_lines(load_inputs(), fetched, broken)
     assert line.estado == "requiere_revision" and "tiers overlap" in line.reason
+
+
+# --- Underpayment (D-08) --------------------------------------------------------
+
+@pytest.mark.parametrize("deal, amount", [("D01", 200), ("D05", 6000)])  # contract base, total base
+def test_payment_below_the_contract_goes_to_review(deal, amount):
+    term = "mensual" if deal == "D01" else "anual"
+    fetched = FetchResult([_payment(f"{deal}_new", deal, term, amount)])
+    [line] = build_lines(load_inputs(), fetched, reference_rule)
+    assert line.estado == "requiere_revision" and "below the contract amount" in line.reason
+    assert line.monto_a_comisionar == 0
+
+
+def test_payment_above_the_contract_is_fine():
+    # D01 pays 300 against a 252 contract: the expansion case, paid on the contract.
+    fetched = FetchResult([_payment("D01_p06", amount=300)])
+    [line] = build_lines(load_inputs(), fetched, reference_rule)
+    assert line.monto_a_comisionar == Decimal("63.00")
+
+
+# --- Partner fee with a stated mechanism (D-13) --------------------------------
+
+def _with_fee(fee):
+    def rule_for(deal):
+        return reference_rule(deal).model_copy(update={"fee": fee})
+    return rule_for
+
+
+# D04's first payment: 12 × 600 × 50% = 3600 gross.
+@pytest.mark.parametrize("fee, net, owed", [
+    (FeeDeduction(total=1500, mode="fixed_per_payment", value=500), "3100.00", 1000),
+    (FeeDeduction(total=1500, mode="pct_of_commission", value=10), "3240.00", 1140),
+    (FeeDeduction(total=1500, mode="as_much_as_possible"), "2100.00", 0),
+    (FeeDeduction(total=5000, mode="as_much_as_possible"), "0.00", 1400),
+])
+def test_fee_deduction_modes(fee, net, owed):
+    fetched = FetchResult([_payment("D04_p01", "D04", "anual", 7200)])
+    [line] = build_lines(load_inputs(), fetched, _with_fee(fee))
+    assert line.monto_a_comisionar == Decimal(net)
+    assert line.trace.gross_amount == 3600
+    assert line.trace.fee_balance_after == owed
+
+
+def test_fee_balance_carries_over_to_the_next_payment():
+    fee = FeeDeduction(total=1500, mode="fixed_per_payment", value=1000)
+    fetched = FetchResult([_payment("D04_p01", "D04", "anual", 7200),
+                           _payment("D04_p02", "D04", "anual", 7200)])
+    first, second = build_lines(load_inputs(), fetched, _with_fee(fee))
+    assert first.trace.fee_deducted == 1000 and second.trace.fee_deducted == 500
+    assert second.trace.fee_balance_after == 0
+
+
+def test_fee_on_a_deal_with_history_goes_to_review():
+    # D01 has approved payments, so how much fee was recovered is unknown.
+    fee = FeeDeduction(total=100, mode="as_much_as_possible")
+    fetched = FetchResult([_payment("D01_p06")])
+    [line] = build_lines(load_inputs(), fetched, _with_fee(fee))
+    assert line.estado == "requiere_revision" and "balance unknown" in line.reason
+
+
+def test_fee_mode_and_value_must_agree():
+    with pytest.raises(ValueError):
+        FeeDeduction(total=1500, mode="fixed_per_payment")
+    with pytest.raises(ValueError):
+        FeeDeduction(total=1500, mode="unspecified", value=500)
+    with pytest.raises(ValueError):
+        FeeDeduction(total=1500, mode="pct_of_commission", value=150)
+
+
+def test_rule_ending_with_fee_still_owed_goes_to_review():
+    # D07: 12-month cap, no history; one annual payment uses all 12 months.
+    fee = FeeDeduction(total=1500, mode="fixed_per_payment", value=500)
+    fetched = FetchResult([_payment("D07_p01", "D07", "anual", 12000)])
+    [line] = build_lines(load_inputs(), fetched, _with_fee(fee))
+    assert line.estado == "requiere_revision" and "still owed" in line.reason
+    assert line.monto_a_comisionar == 0
+    assert (line.trace.gross_amount, line.trace.fee_deducted, line.trace.fee_balance_after) == (6000, 500, 1000)
+
+
+def test_rule_ending_with_fee_covered_is_paid():
+    fee = FeeDeduction(total=1500, mode="as_much_as_possible")
+    fetched = FetchResult([_payment("D07_p01", "D07", "anual", 12000)])
+    [line] = build_lines(load_inputs(), fetched, _with_fee(fee))
+    assert (line.estado, line.monto_a_comisionar) == ("completo", Decimal("4500.00"))
