@@ -13,7 +13,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-FeeMode = Literal["unspecified", "fixed_per_payment", "pct_of_commission", "as_much_as_possible"]
+FeeMode = Literal["fixed_per_payment", "pct_of_commission"]
 
 
 class ExtractedTier(BaseModel):
@@ -27,21 +27,26 @@ class ExtractedTier(BaseModel):
 class ExtractedFee(BaseModel):
     total: float = Field(description="Total del partner fee adeudado, en USD.")
     mode: FeeMode = Field(
-        description="Cuánto de cada comisión va al fee, según lo dice el texto. "
-                    "'unspecified' si el texto no dice cuánto por pago.")
-    value: float | None = Field(
-        description="USD por pago para 'fixed_per_payment', porcentaje de cada comisión para "
-                    "'pct_of_commission'; null para los otros modos.")
+        description="Cómo se descuenta de cada comisión: 'fixed_per_payment' (un monto fijo en USD "
+                    "por pago) o 'pct_of_commission' (un porcentaje de cada comisión).")
+    value: float = Field(
+        description="El monto en USD por pago, o el porcentaje de cada comisión, según mode.")
 
 
 class RuleExtraction(BaseModel):
     tiers: list[ExtractedTier] = Field(
         description="Tramos de comisión en orden, desde el mes 1, sin huecos ni superposiciones.")
     do_not_pay: bool = Field(description="True si el texto dice que esta comisión no se debe pagar.")
-    fee: ExtractedFee | None = Field(description="Partner fee a recuperar de las comisiones, o null.")
+    menciona_fee: bool = Field(
+        description="True si el texto menciona un partner fee, o cualquier monto que el partner deba y "
+                    "haya que descontar de sus comisiones, esté completo o no.")
+    fee: ExtractedFee | None = Field(
+        description="El partner fee, solo si el texto dice el total adeudado y cuánto descontar de cada "
+                    "comisión. Si falta alguno de los dos, null, y explicá en flags qué falta.")
     base_mencionada: Literal["total", "contrato"] | None = Field(
         description="La base que menciona el texto: 'total' para la totalidad de lo facturado (p. ej. "
                     "'sobre la totalidad'), 'contrato' para el monto de contrato; null si no menciona ninguna.")
     flags: list[str] = Field(
-        description="Lo ambiguo, contradictorio o que este esquema no cubre, en castellano, "
-                    "una oración corta cada uno. Vacío si el texto es claro.")
+        description="Lo que impide calcular la comisión: datos que faltan, ambigüedades, "
+                    "contradicciones o reglas que este esquema no cubre. En castellano, una oración "
+                    "corta cada uno. Vacío si el texto es claro.")

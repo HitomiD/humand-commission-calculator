@@ -155,7 +155,7 @@ def test_commissions_json():
 def test_rules_section_shows_every_step(monkeypatch, fake_rules):
     text = client.get("/").text
     assert "Reglas leídas (8)" in text
-    assert 'id="regla-D04"' in text and "fee 1500 (unspecified)" in text
+    assert 'id="regla-D04"' in text and "el texto menciona un partner fee incompleto" in text
     assert '<a href="#regla-D01">D01</a>' in text  # a line links to its rule
 
 

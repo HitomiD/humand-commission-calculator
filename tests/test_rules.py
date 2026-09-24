@@ -19,9 +19,15 @@ def _tier(from_month, to_month, pct):
     return ExtractedTier(from_month=from_month, to_month=to_month, pct=pct)
 
 
-def _read(tiers, do_not_pay=False, fee=None, base=None, flags=()):
-    return RuleExtraction(tiers=tiers, do_not_pay=do_not_pay, fee=fee,
-                          base_mencionada=base, flags=list(flags))
+def _read(tiers, do_not_pay=False, fee=None, base=None, flags=(), menciona_fee=None):
+    # By default the text mentions a fee exactly when a fee was read.
+    return RuleExtraction(tiers=tiers, do_not_pay=do_not_pay, fee=fee, base_mencionada=base,
+                          flags=list(flags),
+                          menciona_fee=fee is not None if menciona_fee is None else menciona_fee)
+
+
+def _fee(total=1500.0, mode="fixed_per_payment", value=100.0):
+    return ExtractedFee(total=total, mode=mode, value=value)
 
 
 _YEAR_1_THEN_30 = [_tier(1, 12, 50.0), _tier(13, None, 30.0)]
@@ -31,8 +37,9 @@ PERFECT = {
     "D01": _read([_tier(1, 12, 25.0)]),
     "D02": _read(_YEAR_1_THEN_30),
     "D03": _read([_tier(1, 24, 35.0)], do_not_pay=True, base="total"),
-    "D04": _read(_YEAR_1_THEN_30, base="total",
-                 fee=ExtractedFee(total=1500.0, mode="unspecified", value=None)),
+    # The fee is mentioned but incomplete, so there is no fee (D-44). A real
+    # reading would also carry a flag; the guard must work without one.
+    "D04": _read(_YEAR_1_THEN_30, base="total", menciona_fee=True),
     "D05": _read(_YEAR_1_THEN_30),
     "D06": _read([_tier(1, 12, 50.0)]),
     "D07": _read([_tier(1, 12, 50.0)]),
@@ -83,13 +90,11 @@ BAD = {
     "negative pct": _read([_tier(1, 12, -5.0)]),
     "ends before it starts": _read([_tier(1, 12, 50.0), _tier(13, 10, 30.0)]),
     "month 0": _read([_tier(0, 12, 50.0)]),
-    "fixed fee without value": _read(_YEAR_1_THEN_30, fee=ExtractedFee(
-        total=1500.0, mode="fixed_per_payment", value=None)),
-    "unspecified fee with value": _read(_YEAR_1_THEN_30, fee=ExtractedFee(
-        total=1500.0, mode="unspecified", value=100.0)),
-    "fee of 0": _read(_YEAR_1_THEN_30, fee=ExtractedFee(total=0.0, mode="unspecified", value=None)),
-    "fee pct above 100": _read(_YEAR_1_THEN_30, fee=ExtractedFee(
-        total=1500.0, mode="pct_of_commission", value=120.0)),
+    "fee mentioned but incomplete": _read(_YEAR_1_THEN_30, menciona_fee=True),
+    "fee read but not mentioned": _read(_YEAR_1_THEN_30, fee=_fee(), menciona_fee=False),
+    "fee of 0": _read(_YEAR_1_THEN_30, fee=_fee(total=0.0)),
+    "fee deduction of 0": _read(_YEAR_1_THEN_30, fee=_fee(value=0.0)),
+    "fee pct above 100": _read(_YEAR_1_THEN_30, fee=_fee(mode="pct_of_commission", value=120.0)),
     "base contradicts the column": _read(_YEAR_1_THEN_30, base="contrato"),
     "model flagged the text": _read(_YEAR_1_THEN_30, flags=["no queda claro si el 30% es perpetuo"]),
 }
@@ -118,10 +123,19 @@ def test_flags_are_kept_and_blank_ones_dropped(deals):
 
 
 def test_fee_values_become_decimals(deals):
-    rule = to_rule(_read(_YEAR_1_THEN_30, fee=ExtractedFee(
-        total=1500.0, mode="fixed_per_payment", value=100.0)), deals["D02"])
+    rule = to_rule(_read(_YEAR_1_THEN_30, fee=_fee()), deals["D02"])
     assert rule.issues == ()
     assert (rule.fee.total, rule.fee.value) == (Decimal(1500), Decimal(100))
+
+
+def test_incomplete_fee_is_caught_by_code_and_explained_by_the_model(deals):
+    # The code guarantees review; the model's flag says why (D-44).
+    reading = _read(_YEAR_1_THEN_30, menciona_fee=True,
+                    flags=["menciona un fee de 1500 USD pero no dice cuánto descontar por pago"])
+    rule = to_rule(reading, deals["D02"])
+    assert rule.fee is None
+    assert rule.issues == ("el texto menciona un partner fee incompleto",
+                           "el modelo marcó: menciona un fee de 1500 USD pero no dice cuánto descontar por pago")
 
 
 # --- read_rules, with Gemini replaced by a fake ------------------------------
@@ -205,4 +219,5 @@ def test_describe_rule(deals):
     from calculator.rules import describe_rule
     assert describe_rule(reference_rule(deals["D02"])) == "m1-m12: 50%, m13-sin fin: 30%"
     assert describe_rule(reference_rule(deals["D03"])) == "m1-m24: 35%; no pagar"
-    assert describe_rule(reference_rule(deals["D04"])) == "m1-m12: 50%, m13-sin fin: 30%; fee 1500 (unspecified)"
+    with_fee = to_rule(_read(_YEAR_1_THEN_30, fee=_fee()), deals["D02"])
+    assert describe_rule(with_fee) == "m1-m12: 50%, m13-sin fin: 30%; fee 1500 (fixed_per_payment 100)"

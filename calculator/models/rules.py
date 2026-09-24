@@ -47,29 +47,24 @@ def tier_issues(tiers: tuple[Tier, ...]) -> list[str]:
 
 
 class FeeDeduction(BaseModel):
-    """A partner fee recovered from the partner's commissions (D-13).
+    """A partner fee recovered from the partner's commissions (D-13, D-44).
 
-    ``mode`` says how much is taken from each commission, as the rule text
-    states it:
-    - ``unspecified``: the text doesn't say. The fee can't be calculated and
-      the deal's payments go to review (D04: "ir descontando").
+    Only a complete fee exists: the total owed and how much is taken from
+    each commission, as the rule text states it:
     - ``fixed_per_payment``: ``value`` USD from each commission.
     - ``pct_of_commission``: ``value`` % of each commission.
-    - ``as_much_as_possible``: the whole commission until the fee is covered,
-      only when the text says so explicitly.
+    A text that mentions a fee without saying both has no ``FeeDeduction``:
+    its rule gets an issue and the deal goes to review.
     """
 
     model_config = ConfigDict(frozen=True)
 
     total: Decimal = Field(gt=0)
-    mode: Literal["unspecified", "fixed_per_payment", "pct_of_commission", "as_much_as_possible"]
-    value: Decimal | None = Field(default=None, gt=0)
+    mode: Literal["fixed_per_payment", "pct_of_commission"]
+    value: Decimal = Field(gt=0)
 
     @model_validator(mode="after")
-    def _value_matches_mode(self):
-        needs_value = self.mode in ("fixed_per_payment", "pct_of_commission")
-        if needs_value != (self.value is not None):
-            raise ValueError(f"mode {self.mode!r} {'needs' if needs_value else 'takes no'} value")
+    def _pct_at_most_100(self):
         if self.mode == "pct_of_commission" and self.value > 100:
             raise ValueError("pct_of_commission above 100")
         return self

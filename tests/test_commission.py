@@ -62,10 +62,10 @@ def test_one_line_per_new_payment(lines):
                              "D05_p05", "D06_p09", "D07_p01", "D08_p13"]
 
 
-def test_fee_without_a_stated_mechanism_goes_to_review(lines):
+def test_incomplete_fee_goes_to_review(lines):
     line = lines["D04_p01"]
     assert line.estado == "requiere_revision"
-    assert "no dice cuánto por pago" in line.reason
+    assert "partner fee incompleto" in line.reason
     assert line.monto_a_comisionar == 0
 
 
@@ -146,11 +146,12 @@ def test_later_payments_follow_the_running_total():
 
 
 def test_payment_after_a_review_line_is_held():
-    # D04's first payment waits for the fee rule, so its next one can't be placed.
-    fetched = FetchResult([_payment("D04_p01", "D04", "anual", 7200), _payment("D04_p02", "D04")])
+    # D01_p06 is below the contract amount (252), so it goes to review and its
+    # months are undecided; D01_p07 can't be placed after it (D-30).
+    fetched = FetchResult([_payment("D01_p06", amount=100), _payment("D01_p07")])
     got = {l.payment_id: l for l in build_lines(load_inputs(), fetched, reference_rule)}
-    assert got["D04_p02"].estado == "requiere_revision"
-    assert "D04_p01" in got["D04_p02"].reason
+    assert got["D01_p07"].estado == "requiere_revision"
+    assert "D01_p06" in got["D01_p07"].reason
 
 
 def test_rule_with_issues_goes_to_review():
@@ -182,8 +183,10 @@ def test_payment_above_the_contract_is_fine():
 # --- Partner fee with a stated mechanism (D-13) --------------------------------
 
 def _with_fee(fee):
+    # The deal's rule as if its text stated the fee completely: D04's own
+    # reference rule has an incomplete fee, so its issue is cleared too.
     def rule_for(deal):
-        return reference_rule(deal).model_copy(update={"fee": fee})
+        return reference_rule(deal).model_copy(update={"fee": fee, "issues": ()})
     return rule_for
 
 
@@ -191,8 +194,8 @@ def _with_fee(fee):
 @pytest.mark.parametrize("fee, net, owed", [
     (FeeDeduction(total=1500, mode="fixed_per_payment", value=500), "3100.00", 1000),
     (FeeDeduction(total=1500, mode="pct_of_commission", value=10), "3240.00", 1140),
-    (FeeDeduction(total=1500, mode="as_much_as_possible"), "2100.00", 0),
-    (FeeDeduction(total=5000, mode="as_much_as_possible"), "0.00", 1400),
+    (FeeDeduction(total=1500, mode="pct_of_commission", value=100), "2100.00", 0),
+    (FeeDeduction(total=5000, mode="fixed_per_payment", value=5000), "0.00", 1400),  # capped at the commission
 ])
 def test_fee_deduction_modes(fee, net, owed):
     fetched = FetchResult([_payment("D04_p01", "D04", "anual", 7200)])
@@ -213,17 +216,17 @@ def test_fee_balance_carries_over_to_the_next_payment():
 
 def test_fee_on_a_deal_with_history_goes_to_review():
     # D01 has approved payments, so how much fee was recovered is unknown.
-    fee = FeeDeduction(total=100, mode="as_much_as_possible")
+    fee = FeeDeduction(total=100, mode="fixed_per_payment", value=50)
     fetched = FetchResult([_payment("D01_p06")])
     [line] = build_lines(load_inputs(), fetched, _with_fee(fee))
     assert line.estado == "requiere_revision" and "saldo del partner fee desconocido" in line.reason
 
 
-def test_fee_mode_and_value_must_agree():
+def test_a_fee_must_be_complete():
     with pytest.raises(ValueError):
-        FeeDeduction(total=1500, mode="fixed_per_payment")
+        FeeDeduction(total=1500, mode="fixed_per_payment")  # no amount per payment
     with pytest.raises(ValueError):
-        FeeDeduction(total=1500, mode="unspecified", value=500)
+        FeeDeduction(total=1500, mode="unspecified", value=500)  # no longer a mode (D-44)
     with pytest.raises(ValueError):
         FeeDeduction(total=1500, mode="pct_of_commission", value=150)
 
@@ -239,7 +242,7 @@ def test_rule_ending_with_fee_still_owed_goes_to_review():
 
 
 def test_rule_ending_with_fee_covered_is_paid():
-    fee = FeeDeduction(total=1500, mode="as_much_as_possible")
+    fee = FeeDeduction(total=1500, mode="fixed_per_payment", value=1500)
     fetched = FetchResult([_payment("D07_p01", "D07", "anual", 12000)])
     [line] = build_lines(load_inputs(), fetched, _with_fee(fee))
     assert (line.estado, line.monto_a_comisionar) == ("completo", Decimal("4500.00"))

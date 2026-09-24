@@ -31,34 +31,32 @@ from calculator.models import CommissionRule, Deal, FeeDeduction, RuleExtraction
 INSTRUCTIONS = """\
 Leés las condiciones de comisión de un deal y completás el esquema JSON dado.
 El partner que trajo al cliente cobra un porcentaje de lo que el cliente paga,
-mes a mes. El texto está escrito a mano y puede ser desprolijo. Extraé solo lo
-que dice: nunca inventes un número. Si algo no está claro o no entra en el
-esquema, decilo en `flags` en vez de suponer.
+mes a mes. El texto está escrito a mano y puede ser desprolijo.
+
+Regla general: extraé solo lo que el texto dice. Si a un campo le falta un
+dato para poder calcular la comisión, no lo completes ni lo supongas: dejalo
+vacío (null o lista vacía) y explicá en flags qué falta. Los flags son para lo
+que impide calcular: datos que faltan, ambigüedades, contradicciones o reglas
+que el esquema no puede expresar (por ejemplo un umbral, o varios partners).
 
 Meses:
-- Los meses de comisión se cuentan desde 1, el primer mes comisionado.
+- Se cuentan desde 1, el primer mes comisionado.
 - "año 1" / "1er año" / "primer año" son los meses 1-12; "año 2" son 13-24, y así.
 - "perpetuo", "de por vida", "en adelante": el último tramo no tiene fin (to_month null).
 - Un solo porcentaje por "N meses" es un tramo de 1 a N.
-- "año 1" sin otro tramo son solo los meses 1-12; no agregues tramos que el texto no dice.
+- No agregues tramos que el texto no dice.
 
 Otros campos:
-- do_not_pay: true solo si el texto dice que no se pague (por ejemplo "NO PAGAR").
-  Igual completá los tramos.
-- fee: un partner fee que el partner debe y se recupera de sus comisiones.
-  mode es "unspecified" salvo que el texto diga cuánto descontar de cada
-  comisión. Decir hasta cuándo se descuenta ("hasta cubrir el monto", "hasta
-  saldarlo") no dice cuánto por pago: sigue siendo "unspecified".
-  "as_much_as_possible" solo si dice explícitamente que se descuente la
-  comisión entera hasta cubrir el fee.
-- base_mencionada: solo si el texto nombra la base: "total" para la totalidad
-  de lo facturado, "contrato" para el monto de contrato. "Revenue exp",
-  "expansión" o "incluye upsells" significan que la base incluye las
-  expansiones: "total". No la deduzcas del tipo de partner.
-- Ignorá lo que no habla de la comisión, como el tipo de partner o notas
-  administrativas ("actualizar planilla").
-- Marcá en flags lo que el esquema no puede expresar, por ejemplo una comisión
-  que se paga al alcanzar un umbral, o que se reparte entre varios partners.
+- do_not_pay: true solo si el texto dice que no se pague. Igual completá los tramos.
+- menciona_fee: true si el texto menciona un partner fee o una deuda del
+  partner a descontar de sus comisiones, esté completa o no.
+- fee: solo si el texto dice el total adeudado y cuánto descontar de cada
+  comisión (un monto fijo por pago o un porcentaje de cada comisión). Si falta
+  alguno de los dos, fee es null y va un flag.
+- base_mencionada: solo si el texto nombra la base explícitamente: "total"
+  para la totalidad de lo facturado, "contrato" para el monto de contrato. Si
+  no, null. La base sale de otro dato, así que una duda sobre la base no es un flag.
+- Ignorá lo que no habla de la comisión, como el tipo de partner o notas administrativas.
 - Escribí los flags en castellano, una oración corta cada uno.
 
 Ejemplos:
@@ -68,14 +66,11 @@ Ejemplos:
 "15% de por vida sobre el total facturado" -> tiers [1-null: 15], base_mencionada "total"
 "No abonar. 20% 12 meses" -> tiers [1-12: 20], do_not_pay true
 "Deben 800usd de fee; descontar 100usd de cada comisión. 30% año 1" -> tiers [1-12: 30],
-  fee {total 800, mode fixed_per_payment, value 100}
+  menciona_fee true, fee {total 800, mode fixed_per_payment, value 100}
+"Fee de 600 usd: se retiene el 25% de cada comisión. 20% año 1" -> tiers [1-12: 20],
+  menciona_fee true, fee {total 600, mode pct_of_commission, value 25}
 "Fee pendiente de 500 usd a recuperar de las comisiones. 25% año 1" -> tiers [1-12: 25],
-  fee {total 500, mode unspecified, value null}
-"Descontar el onboarding de 300usd de las comisiones hasta saldarlo. 20% 12 meses" -> tiers [1-12: 20],
-  fee {total 300, mode unspecified, value null}
-"Retener comisiones completas hasta cubrir fee de 200usd. 10% perpetuo" -> tiers [1-null: 10],
-  fee {total 200, mode as_much_as_possible, value null}
-"25% año 1 (con expansiones)" -> tiers [1-12: 25], base_mencionada "total"
+  menciona_fee true, fee null, flags ["menciona un fee de 500 USD pero no dice cuánto descontar de cada comisión"]
 "35% o 40% según volumen" -> tiers [], flags ["el porcentaje depende del volumen y no se indica cuál aplica"]
 """
 
@@ -132,9 +127,9 @@ def to_rule(extraction: RuleExtraction, deal: Deal) -> CommissionRule:
     """Validate what the LLM read into the rule the calculation uses (D-18).
 
     Checks the tiers (valid percentages, starting at month 1, no gaps or
-    overlaps), that the fee's mode and value agree, and that a base the text
-    mentions agrees with ``commission_on_expansion``, which always wins
-    (D-17). The LLM's own flags become issues too. There is no separate
+    overlaps), that a fee the text mentions is complete (D-44), and that a
+    base the text mentions agrees with ``commission_on_expansion``, which
+    always wins (D-17). The LLM's own flags become issues too. There is no separate
     duration to check: the maximum comes from the last tier (D-31).
     """
     issues: list[str] = []
@@ -151,10 +146,15 @@ def to_rule(extraction: RuleExtraction, deal: Deal) -> CommissionRule:
     fee = None
     if (f := extraction.fee) is not None:
         try:
-            fee = FeeDeduction(total=_decimal(f.total), mode=f.mode,
-                               value=None if f.value is None else _decimal(f.value))
+            fee = FeeDeduction(total=_decimal(f.total), mode=f.mode, value=_decimal(f.value))
         except ValidationError:
             issues.append(f"partner fee inválido: total {f.total}, modo {f.mode}, valor {f.value}")
+        if not extraction.menciona_fee:
+            issues.append("el modelo devolvió un partner fee pero indicó que el texto no menciona ninguno")
+    elif extraction.menciona_fee:
+        # Checked here, not left to the model's flags: an incomplete fee that
+        # were simply dropped would pay the partner in full and lose the debt (D-44).
+        issues.append("el texto menciona un partner fee incompleto")
 
     said = extraction.base_mencionada
     if said is not None and (said == "total") != deal.commission_on_expansion:
@@ -224,12 +224,11 @@ def read_rules(deals: Iterable[Deal], *, refresh: bool = False) -> RulesResult:
 
 def describe_rule(rule: CommissionRule) -> str:
     """A rule in one short line, for the page and the evaluation:
-    ``m1-m12: 50%, m13-sin fin: 30%; fee 1500 (unspecified)``."""
+    ``m1-m12: 50%, m13-sin fin: 30%; fee 1500 (fixed_per_payment 100)``."""
     parts = [", ".join(f"{_month_range(t.from_month, t.to_month)}: {t.pct}%" for t in rule.tiers)
              or "sin tramos"]
     if rule.do_not_pay:
         parts.append("no pagar")
     if rule.fee:
-        value = "" if rule.fee.value is None else f" {rule.fee.value}"
-        parts.append(f"fee {rule.fee.total} ({rule.fee.mode}{value})")
+        parts.append(f"fee {rule.fee.total} ({rule.fee.mode} {rule.fee.value})")
     return "; ".join(parts)

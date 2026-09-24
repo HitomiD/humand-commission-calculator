@@ -83,13 +83,8 @@ def memo(deal: Deal, start: int, end: int, remaining: int | None) -> str:
 
 def fee_deduction(fee: FeeDeduction, gross: Decimal, balance: Decimal) -> Decimal:
     """How much of the fee this commission recovers (D-13). Never more than
-    the balance owed or the commission itself. ``fee.mode`` must be known."""
-    if fee.mode == "fixed_per_payment":
-        wanted = fee.value
-    elif fee.mode == "pct_of_commission":
-        wanted = gross * fee.value / 100
-    else:  # as_much_as_possible
-        wanted = gross
+    the balance owed or the commission itself."""
+    wanted = fee.value if fee.mode == "fixed_per_payment" else gross * fee.value / 100
     return min(wanted, balance, gross)
 
 
@@ -150,10 +145,6 @@ def compute_line(
     gross = sum((s.amount for s in slices), Decimal(0))
     fee_fields = {}
     if rule.fee is not None:
-        if rule.fee.mode == "unspecified":
-            return CommissionLine(**common, estado="requiere_revision", trace=trace(slices, flags),
-                                  reason=(f"hay un partner fee de {rule.fee.total} a descontar, pero la regla "
-                                          "no dice cuánto por pago"))
         if fee_balance is None:
             return CommissionLine(**common, estado="requiere_revision", trace=trace(slices, flags),
                                   reason=("saldo del partner fee desconocido: el deal tiene pagos aprobados "

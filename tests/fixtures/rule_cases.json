@@ -1,0 +1,61 @@
+[
+  {"id": "plano-x-meses", "kind": "plano", "pct": "25% x 12 meses", "expected": {"tiers": [[1, 12, 25]]}, "why": "one percentage for N months"},
+  {"id": "plano-en-letras", "kind": "plano", "pct": "cincuenta por ciento durante el primer año", "expected": {"tiers": [[1, 12, 50]]}, "why": "percentage in words"},
+  {"id": "plano-18-meses", "kind": "plano", "pct": "40% 18 meses", "expected": {"tiers": [[1, 18, 40]]}, "why": "a duration that isn't a whole year"},
+  {"id": "plano-2-anios", "kind": "plano", "pct": "20% por 2 años", "expected": {"tiers": [[1, 24, 20]]}, "why": "years converted to months"},
+  {"id": "plano-primeros-6", "kind": "plano", "pct": "35% primeros 6 meses", "expected": {"tiers": [[1, 6, 35]]}, "why": "'primeros N meses'"},
+  {"id": "plano-con-tipo-partner", "kind": "plano", "pct": "Referral: 10% - 1 año", "expected": {"tiers": [[1, 12, 10]]}, "why": "the partner type is noise"},
+  {"id": "plano-anio-1-y-2", "kind": "plano", "pct": "50% año 1 y 2", "expected": {"tiers": [[1, 24, 50]]}, "why": "the same percentage for two years; one or two tiers mean the same"},
+  {"id": "plano-hasta-mes", "kind": "plano", "pct": "25% hasta el mes 9", "expected": {"tiers": [[1, 9, 25]]}, "why": "'hasta el mes N'"},
+  {"id": "plano-aclaracion", "kind": "plano", "pct": "60 % primer año (12 meses)", "expected": {"tiers": [[1, 12, 60]]}, "why": "redundant clarification"},
+  {"id": "plano-decimal", "kind": "plano", "pct": "12,5% durante 12 meses", "expected": {"tiers": [[1, 12, 12.5]]}, "why": "decimal comma"},
+
+  {"id": "tramos-tres-anios", "kind": "tramos", "pct": "20% año 1 / 10% año 2 / 5% año 3", "expected": {"tiers": [[1, 12, 20], [13, 24, 10], [25, 36, 5]]}, "why": "three yearly tiers, ending at month 36"},
+  {"id": "tramos-meses-explicitos", "kind": "tramos", "pct": "30% los primeros 12 meses, 15% del mes 13 al 24", "expected": {"tiers": [[1, 12, 30], [13, 24, 15]]}, "why": "tiers given as month ranges"},
+  {"id": "tramos-en-adelante", "kind": "tramos", "pct": "45% año 1 - 25% año 2 en adelante", "expected": {"tiers": [[1, 12, 45], [13, null, 25]]}, "why": "second tier with no end"},
+  {"id": "tramos-despues", "kind": "tramos", "pct": "Business Partner - 50% 1er año, 20% después", "expected": {"tiers": [[1, 12, 50], [13, null, 20]]}, "why": "'después' with no limit is open-ended"},
+  {"id": "tramos-semestres", "kind": "tramos", "pct": "10% los meses 1 a 6 y 5% del 7 al 12", "expected": {"tiers": [[1, 6, 10], [7, 12, 5]]}, "why": "tiers shorter than a year"},
+
+  {"id": "perpetuo-simple", "kind": "perpetuo", "pct": "15% perpetuo", "expected": {"tiers": [[1, null, 15]]}, "why": "one tier with no end"},
+  {"id": "perpetuo-de-por-vida", "kind": "perpetuo", "pct": "12.5% de por vida", "expected": {"tiers": [[1, null, 12.5]]}, "why": "decimal point, 'de por vida'"},
+  {"id": "perpetuo-para-siempre", "kind": "perpetuo", "pct": "30% para siempre", "expected": {"tiers": [[1, null, 30]]}, "why": "a synonym the prompt doesn't list"},
+
+  {"id": "ingles-plano", "kind": "otro_idioma", "pct": "30% for 12 months", "expected": {"tiers": [[1, 12, 30]]}, "why": "English"},
+  {"id": "ingles-tramos", "kind": "otro_idioma", "pct": "20% year 1, 10% ongoing", "expected": {"tiers": [[1, 12, 20], [13, null, 10]]}, "why": "English, open-ended second tier"},
+
+  {"id": "typo-anio", "kind": "typo", "pct": "50% 1er anio", "expected": {"tiers": [[1, 12, 50]]}, "why": "'anio' for 'año'"},
+  {"id": "typo-meces", "kind": "typo", "pct": "25 % x 12 meces", "expected": {"tiers": [[1, 12, 25]]}, "why": "'meces' for 'meses'"},
+
+  {"id": "no-pagar-liquidar", "kind": "no_pagar", "pct": "No liquidar comisión. 30% 12 meses", "expected": {"tiers": [[1, 12, 30]], "do_not_pay": true}, "why": "'no liquidar' means don't pay"},
+  {"id": "no-pagar-hasta-aviso", "kind": "no_pagar", "pct": "20% año 1 - NO PAGAR hasta nuevo aviso", "expected": {"tiers": [[1, 12, 20]], "do_not_pay": true}, "why": "not paid for now"},
+  {"id": "no-pagar-suspendida", "kind": "no_pagar", "pct": "Comisión suspendida, no pagar. 40% 1 año", "expected": {"tiers": [[1, 12, 40]], "do_not_pay": true}, "why": "suspended commission"},
+  {"id": "no-pagar-en-notas", "kind": "no_pagar", "pct": "50% año 1", "notes": "Partner dado de baja, no se le paga más", "expected": {"tiers": [[1, 12, 50]], "do_not_pay": true}, "why": "the instruction is in the notes field"},
+
+  {"id": "base-total-coincide", "kind": "base", "pct": "30% 12 meses sobre el total facturado", "commission_on_expansion": true, "expected": {"tiers": [[1, 12, 30]]}, "why": "the text's base agrees with the column"},
+  {"id": "base-total-contradice", "kind": "base", "pct": "30% 12 meses sobre el total facturado", "commission_on_expansion": false, "expected": "revision", "why": "the text says total, the column says contract"},
+  {"id": "base-contrato-contradice", "kind": "base", "pct": "25% año 1 sobre el monto del contrato", "commission_on_expansion": true, "expected": "revision", "why": "the text says contract, the column says total"},
+  {"id": "base-expansiones", "kind": "base", "pct": "20% año 1 (incluye expansiones)", "commission_on_expansion": true, "expected": {"tiers": [[1, 12, 20]]}, "why": "including expansions agrees with the column"},
+  {"id": "base-sin-upsells", "kind": "base", "pct": "50% año 1 / 30% año 2 en adelante, excepto upsells", "commission_on_expansion": true, "expected": "revision", "why": "excluding upsells contradicts a column that includes expansions"},
+
+  {"id": "fee-fijo", "kind": "fee_completo", "pct": "Fee de alta 1.000usd, se descuentan 200usd por comisión. 30% año 1", "expected": {"tiers": [[1, 12, 30]], "fee": {"total": 1000, "mode": "fixed_per_payment", "value": 200}}, "why": "total and fixed amount per payment; '1.000' is a thousand"},
+  {"id": "fee-porcentaje", "kind": "fee_completo", "pct": "Deben 2000 USD de partner fee: retener el 50% de cada comisión hasta saldarlo. 40% 12 meses", "expected": {"tiers": [[1, 12, 40]], "fee": {"total": 2000, "mode": "pct_of_commission", "value": 50}}, "why": "total and a percentage of each commission"},
+  {"id": "fee-de-a-100", "kind": "fee_completo", "pct": "Descontar el fee de 300 usd de a 100 por pago. 20% perpetuo", "expected": {"tiers": [[1, null, 20]], "fee": {"total": 300, "mode": "fixed_per_payment", "value": 100}}, "why": "'de a 100 por pago'"},
+  {"id": "fee-comision-entera", "kind": "fee_completo", "pct": "Fee 900usd: se descuenta la comisión entera hasta cubrirlo. 25% año 1", "expected": {"tiers": [[1, 12, 25]], "fee": {"total": 900, "mode": "pct_of_commission", "value": 100}}, "why": "the whole commission is 100% of it"},
+  {"id": "fee-en-notas", "kind": "fee_completo", "pct": "35% año 1", "notes": "Fee de 400usd, descontar 100 por pago", "expected": {"tiers": [[1, 12, 35]], "fee": {"total": 400, "mode": "fixed_per_payment", "value": 100}}, "why": "the fee is in the notes field"},
+
+  {"id": "fee-se-va-descontando", "kind": "fee_incompleto", "pct": "Ellos deben un fee de 1.200usd que se va descontando de las comisiones. 30% año 1", "expected": "revision", "why": "total but no amount per payment"},
+  {"id": "fee-sin-total", "kind": "fee_incompleto", "pct": "Descontar el partner fee del próximo pago. 50% año 1", "expected": "revision", "why": "no total"},
+  {"id": "fee-pendiente", "kind": "fee_incompleto", "pct": "Hay un fee pendiente con este partner. 20% 12 meses", "expected": "revision", "why": "neither total nor amount per payment"},
+  {"id": "fee-una-parte", "kind": "fee_incompleto", "pct": "Fee de 700usd, descontar una parte en cada pago. 35% año 1", "expected": "revision", "why": "'una parte' isn't an amount"},
+  {"id": "fee-ver-contrato", "kind": "fee_incompleto", "pct": "Recuperar el fee de onboarding (ver contrato) de las comisiones. 25% 12 meses", "expected": "revision", "why": "the amount is in another document"},
+  {"id": "fee-deuda-en-notas", "kind": "fee_incompleto", "pct": "40% 12 meses", "notes": "Adeudan 900 USD", "expected": "revision", "why": "a debt with no way to deduct it"},
+
+  {"id": "ambiguo-rango", "kind": "ambiguo", "pct": "entre 20% y 30%, a definir con el partner", "expected": "revision", "why": "the percentage isn't decided"},
+  {"id": "ambiguo-umbral", "kind": "ambiguo", "pct": "Se paga al acumular 20k de comisiones. 20% año 1", "expected": "revision", "why": "a threshold the schema can't express"},
+  {"id": "ambiguo-dos-partners", "kind": "ambiguo", "pct": "30% año 1, repartido 60/40 entre Partner Sur y Partner Norte", "expected": "revision", "why": "split between partners"},
+  {"id": "ambiguo-contradictorio", "kind": "ambiguo", "pct": "20% 12 meses, perpetuo", "expected": "revision", "why": "12 months and perpetual contradict each other"},
+  {"id": "ambiguo-sin-duracion", "kind": "ambiguo", "pct": "15% mensual", "expected": "revision", "why": "no duration: perpetual would be a guess"},
+  {"id": "ambiguo-a-definir", "kind": "ambiguo", "pct": "Comisión a definir", "expected": "revision", "why": "no percentage"},
+  {"id": "ambiguo-ver-acuerdo", "kind": "ambiguo", "pct": "Ver acuerdo firmado", "expected": "revision", "why": "the rule is in another document"},
+  {"id": "ambiguo-primer-pago", "kind": "ambiguo", "pct": "25% únicamente sobre el primer pago", "expected": "revision", "why": "per payment, not per month"}
+]
