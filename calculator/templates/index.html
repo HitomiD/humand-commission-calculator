@@ -62,9 +62,9 @@
       <td>{{ l.reason or "" }}</td>
       <td>
         {% if l.trace %}
-        {{ l.trace.months_before }} months before; payment {{ l.trace.payment_amount }} for {{ l.trace.months_in_payment }} month(s)<br>
+        {{ l.trace.months_before }} meses previos; pago de {{ l.trace.payment_amount }} por {{ l.trace.months_in_payment }} mes(es)<br>
         {% for s in l.trace.slices %}m{{ s.from_month }}-m{{ s.to_month }}: {{ s.months }} × {{ l.trace.base_mensual }} × {{ s.pct }}% = {{ s.amount }}<br>{% endfor %}
-        {% if l.trace.fee_deducted is not none %}gross {{ l.trace.gross_amount }} − fee {{ l.trace.fee_deducted }}; fee still owed {{ l.trace.fee_balance_after }}<br>{% endif %}
+        {% if l.trace.fee_deducted is not none %}bruto {{ l.trace.gross_amount }} − fee {{ l.trace.fee_deducted }}; fee adeudado {{ l.trace.fee_balance_after }}<br>{% endif %}
         {% for f in l.trace.flags %}{{ f }}<br>{% endfor %}
         {% endif %}
       </td>
