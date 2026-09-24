@@ -10,8 +10,11 @@ The calculator and payment mock live in separate source directories. Vercel serv
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
+export PAYMENTS_API_URL=http://localhost:4000/api/stripe/payments
 uvicorn api.index:app --reload --port 8000
 ```
+
+`PAYMENTS_API_URL` is the full URL of the payments endpoint, and it is required. The calculator treats the payments API as an external service: point it at the local mock (below) or at any deployment, for example `https://<deployment>.vercel.app/api/stripe/payments`. On Vercel, set it in the project's environment variables. If it isn't set, the page says so instead of loading payments.
 
 Open `http://localhost:8000/`. The initial calculator response is `{"message":"hello world from calculator"}`.
 

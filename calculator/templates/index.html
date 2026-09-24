@@ -1,10 +1,32 @@
 {% extends "base.html" %}
-{# Main page. It grows one section per phase: inputs now, then fetched
-   payments (phase 2), then commission lines (phase 3 onward). #}
+{# Main page. It grows one section per phase: inputs and fetched payments
+   now, then commission lines (phase 3 onward). #}
 
 {% block content %}
 
-{# Data problems come first: a blocked deal must never go unnoticed (D-22). #}
+{# Problems come first: a blocked deal or a failed fetch must never go
+   unnoticed (D-22, D-26). #}
+{% if fetch_error %}
+<section>
+  <h2>Payments could not be fetched</h2>
+  <p>{{ fetch_error }}</p>
+  <p>No commission can be calculated until the payment list is complete.</p>
+</section>
+{% endif %}
+
+{% if fetched and fetched.errors %}
+<section>
+  <h2>Payment errors ({{ fetched.errors | length }})</h2>
+  <p>These payments are not used; their deals go to review.</p>
+  <table>
+    <tr><th>Payment</th><th>Deal</th><th>Problem</th></tr>
+    {% for e in fetched.errors %}
+    <tr><td>{{ e.payment_id or "—" }}</td><td>{{ e.deal_id or "—" }}</td><td>{{ e.message }}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+{% endif %}
+
 {% if data.issues %}
 <section>
   <h2>Data issues ({{ data.issues | length }})</h2>
@@ -53,5 +75,28 @@
     {% endfor %}
   </table>
 </section>
+
+{% if fetched %}
+{# Informational until phase 3 filters new payments properly (D-05). #}
+{% set approved_ids = data.approved | map(attribute="payment_id") | list %}
+<section>
+  <h2>Fetched payments ({{ fetched.payments | length }})</h2>
+  <p>Pages fetched: {{ fetched.stats.pages }} · requests retried (429 or network error): {{ fetched.stats.retries }}</p>
+  <table>
+    <tr><th>Deal</th><th>Payment</th><th>Date</th><th>Amount</th><th>Term</th><th>Months</th><th>Already approved</th></tr>
+    {% for p in fetched.payments %}
+    <tr>
+      <td>{{ p.deal_id }}</td>
+      <td>{{ p.payment_id }}</td>
+      <td>{{ p.payment_date }}</td>
+      <td>{{ p.amount }} {{ p.currency }}</td>
+      <td>{{ p.payment_term.value }}</td>
+      <td>{{ p.payment_term.months }}</td>
+      <td>{{ "yes" if p.payment_id in approved_ids else "no" }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</section>
+{% endif %}
 
 {% endblock %}

@@ -5,6 +5,8 @@ import pytest
 
 from calculator.payments import MAX_ATTEMPTS, FetchError, fetch_all_payments
 
+URL = "http://mock/api/stripe/payments"
+
 
 def _payment(n: int, deal: str = "D01", **changes) -> dict:
     return {
@@ -45,8 +47,8 @@ class FakeMock:
 
 
 def _fetch(mock, sleeps: list | None = None):
-    client = httpx.Client(base_url="http://mock", transport=httpx.MockTransport(mock))
-    return fetch_all_payments(client, sleep=(sleeps.append if sleeps is not None else lambda s: None))
+    client = httpx.Client(transport=httpx.MockTransport(mock))
+    return fetch_all_payments(client, URL, sleep=(sleeps.append if sleeps is not None else lambda s: None))
 
 
 def test_follows_pages_through_rate_limits():
@@ -67,10 +69,9 @@ def test_gives_up_after_max_attempts():
 
 
 def test_other_http_errors_stop_immediately():
-    client = httpx.Client(base_url="http://mock",
-                          transport=httpx.MockTransport(lambda r: httpx.Response(500, text="boom")))
+    client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(500, text="boom")))
     with pytest.raises(FetchError, match="HTTP 500"):
-        fetch_all_payments(client, sleep=lambda s: None)
+        fetch_all_payments(client, URL, sleep=lambda s: None)
 
 
 def test_identical_duplicate_is_kept_once():

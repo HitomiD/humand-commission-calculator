@@ -5,7 +5,7 @@ Jinja templates. It is served locally by Uvicorn and on Vercel through
 ``api/index.py``.
 
 A single page grows with each phase of the implementation plan: it currently
-shows the loaded inputs; fetched payments and commission lines come later.
+shows the loaded inputs and the fetched payments; commission lines come later.
 """
 
 from pathlib import Path
@@ -14,7 +14,9 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
+from calculator.config import ConfigError
 from calculator.data import InputData, load_inputs
+from calculator.payments import FetchError, FetchResult, fetch_payments
 
 # Resolved from this file, like DATA_DIR, so it works under Uvicorn and Vercel.
 templates = Jinja2Templates(directory=Path(__file__).resolve().parent / "templates")
@@ -34,12 +36,25 @@ def _months_done(data: InputData) -> dict[str, int | None]:
     return totals
 
 
+def _fetch() -> tuple[FetchResult | None, str | None]:
+    # A failed fetch is shown on the page instead of failing the request, so
+    # the inputs and their issues stay visible (D-26).
+    try:
+        return fetch_payments(), None
+    except (ConfigError, FetchError) as e:
+        return None, str(e)
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     data = load_inputs()
-    return templates.TemplateResponse(
-        request, "index.html", {"data": data, "months_done": _months_done(data)}
-    )
+    fetched, fetch_error = _fetch()
+    return templates.TemplateResponse(request, "index.html", {
+        "data": data,
+        "months_done": _months_done(data),
+        "fetched": fetched,
+        "fetch_error": fetch_error,
+    })
 
 
 # Same data as JSON, for debugging and for comparing against the expected
@@ -47,9 +62,14 @@ def index(request: Request):
 @app.get("/api/data")
 def data_json() -> dict:
     data = load_inputs()
+    fetched, fetch_error = _fetch()
     return {
         "deals": data.deals,
         "approved_payments": data.approved,
         "issues": data.issues,
         "blocked_deals": sorted(data.blocked_deals),
+        "payments": fetched.payments if fetched else None,
+        "payment_errors": fetched.errors if fetched else None,
+        "fetch_stats": fetched.stats if fetched else None,
+        "fetch_error": fetch_error,
     }

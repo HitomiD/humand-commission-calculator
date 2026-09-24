@@ -6,11 +6,18 @@ changes without reloading the module.
 
 import os
 
-# Default matches the local mock server (mock-api/dev-server.cjs).
-DEFAULT_MOCK_BASE_URL = "http://localhost:4000"
-PAYMENTS_PATH = "/api/stripe/payments"
+
+class ConfigError(Exception):
+    """A required setting is missing."""
 
 
-def mock_base_url() -> str:
-    """Base URL of the payment mock, without a trailing slash."""
-    return os.environ.get("MOCK_BASE_URL", DEFAULT_MOCK_BASE_URL).rstrip("/")
+def payments_api_url() -> str:
+    """Full URL of the payments endpoint, e.g. ``https://host/api/stripe/payments``.
+
+    Required, with no default: the payments API is treated as an external
+    service, so where it lives is always an explicit choice (D-28).
+    """
+    url = os.environ.get("PAYMENTS_API_URL", "").strip()
+    if not url:
+        raise ConfigError("PAYMENTS_API_URL is not set")
+    return url

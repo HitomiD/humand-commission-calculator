@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 import httpx
 from pydantic import ValidationError
 
-from calculator.config import PAYMENTS_PATH, mock_base_url
+from calculator.config import payments_api_url
 from calculator.models import Payment
 
 PAGE_LIMIT = 100  # the mock's maximum
@@ -62,11 +62,11 @@ def _retry_after(response: httpx.Response) -> float:
     return min(max(seconds, 0.0), MAX_RETRY_AFTER)
 
 
-def _get_page(client: httpx.Client, params: dict, stats: FetchStats, sleep: Callable[[float], None]) -> dict:
+def _get_page(client: httpx.Client, url: str, params: dict, stats: FetchStats, sleep: Callable[[float], None]) -> dict:
     """GET one page, retrying 429s and network errors up to ``MAX_ATTEMPTS``."""
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
-            response = client.get(PAYMENTS_PATH, params=params)
+            response = client.get(url, params=params)
         except httpx.TransportError as e:
             problem, wait = f"network error: {e}", DEFAULT_RETRY_AFTER
         else:
@@ -89,11 +89,13 @@ def _get_page(client: httpx.Client, params: dict, stats: FetchStats, sleep: Call
     raise FetchError(f"gave up after {MAX_ATTEMPTS} attempts; last problem: {problem}")
 
 
-def fetch_all_payments(client: httpx.Client, sleep: Callable[[float], None] = time.sleep) -> FetchResult:
+def fetch_all_payments(
+    client: httpx.Client, url: str, sleep: Callable[[float], None] = time.sleep
+) -> FetchResult:
     """Follow the cursor until ``has_more`` is false and return every payment.
 
-    ``client`` must have ``base_url`` set. ``sleep`` is replaceable so tests
-    don't wait.
+    ``url`` is the full endpoint URL. ``sleep`` is replaceable so tests don't
+    wait.
     """
     stats = FetchStats()
     raw: dict[str, dict] = {}  # first copy of each payment_id, in served order
@@ -105,7 +107,7 @@ def fetch_all_payments(client: httpx.Client, sleep: Callable[[float], None] = ti
         params = {"limit": PAGE_LIMIT}
         if cursor:
             params["starting_after"] = cursor
-        body = _get_page(client, params, stats, sleep)
+        body = _get_page(client, url, params, stats, sleep)
         items = body["data"]
 
         new_ids = 0
@@ -151,7 +153,8 @@ def _deal_of(item) -> str | None:
     return deal if isinstance(deal, str) and deal else None
 
 
-def fetch_payments(base_url: str | None = None) -> FetchResult:
-    """Fetch from the configured mock (``MOCK_BASE_URL``) with a fresh client."""
-    with httpx.Client(base_url=base_url or mock_base_url(), timeout=10.0) as client:
-        return fetch_all_payments(client)
+def fetch_payments() -> FetchResult:
+    """Fetch from ``PAYMENTS_API_URL``; raises ``ConfigError`` if it isn't set."""
+    url = payments_api_url()
+    with httpx.Client(timeout=10.0) as client:
+        return fetch_all_payments(client, url)
