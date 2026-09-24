@@ -18,7 +18,7 @@ from calculator.commission import build_lines, months_already
 from calculator.config import ConfigError
 from calculator.data import InputData, load_inputs
 from calculator.payments import FetchError, FetchResult, fetch_payments
-from calculator.reference_rules import reference_rule
+from calculator.rules import RulesResult, read_rules
 
 # Resolved from this file, like DATA_DIR, so it works under Uvicorn and Vercel.
 templates = Jinja2Templates(directory=Path(__file__).resolve().parent / "templates")
@@ -30,10 +30,16 @@ def _months_done(data: InputData) -> dict[str, int | None]:
     return months_already(data.approved, data.blocked_deals)
 
 
-def _lines(data: InputData, fetched: FetchResult | None):
+def _rules(data: InputData, fetched: FetchResult | None, refresh: bool) -> RulesResult | None:
+    # Gemini is only asked when there are lines to compute (D-37).
+    return read_rules(data.deals, refresh=refresh) if fetched else None
+
+
+def _lines(data: InputData, fetched: FetchResult | None, rules: RulesResult | None):
     # No lines without the full payment list: a partial one would hide payments.
-    # Rules are the hand-written ones until the LLM parser exists (phase 4).
-    return build_lines(data, fetched, reference_rule) if fetched else None
+    if not fetched:
+        return None
+    return build_lines(data, fetched, lambda deal: rules.rules.get(deal.deal_id))
 
 
 def _fetch() -> tuple[FetchResult | None, str | None]:
@@ -45,27 +51,35 @@ def _fetch() -> tuple[FetchResult | None, str | None]:
         return None, str(e)
 
 
+# ``releer=1`` ignores the readings this instance remembers and asks Gemini
+# again ("Releer reglas con Gemini"); without it, the page is recalculated
+# with the rules already read ("Recalcular").
 @app.get("/", response_class=HTMLResponse)
-def index(request: Request):
+def index(request: Request, releer: bool = False):
     data = load_inputs()
     fetched, fetch_error = _fetch()
+    rules = _rules(data, fetched, releer)
     return templates.TemplateResponse(request, "index.html", {
         "data": data,
         "months_done": _months_done(data),
         "fetched": fetched,
         "fetch_error": fetch_error,
-        "lines": _lines(data, fetched),
+        "rules": rules,
+        "lines": _lines(data, fetched, rules),
     })
 
 
 # Same data as JSON, for debugging and for comparing against the expected
 # output. On Vercel this path is rewritten to this app (see vercel.json).
 @app.get("/api/data")
-def data_json() -> dict:
+def data_json(releer: bool = False) -> dict:
     data = load_inputs()
     fetched, fetch_error = _fetch()
+    rules = _rules(data, fetched, releer)
     return {
-        "lines": _lines(data, fetched),
+        "rules_model": rules.model if rules else None,
+        "rules_error": rules.error if rules else None,
+        "lines": _lines(data, fetched, rules),
         "deals": data.deals,
         "approved_payments": data.approved,
         "issues": data.issues,

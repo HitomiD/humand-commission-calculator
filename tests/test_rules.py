@@ -1,16 +1,18 @@
 """Tests for validating what the LLM read into a rule (``calculator/rules.py``).
 
-No LLM is called here: the extractions are written by hand.
+No LLM is called here: the extractions are written by hand, and Gemini is
+replaced by a fake.
 """
 
 from decimal import Decimal
 
 import pytest
 
+import calculator.rules
 from calculator.data import load_inputs
 from calculator.models import Deal, ExtractedFee, ExtractedTier, RuleExtraction
 from calculator.reference_rules import reference_rule
-from calculator.rules import rule_text, to_rule
+from calculator.rules import read_rules, rule_text, to_rule
 
 
 def _tier(from_month, to_month, pct):
@@ -120,3 +122,73 @@ def test_fee_values_become_decimals(deals):
         total=1500.0, mode="fixed_per_payment", value=100.0)), deals["D02"])
     assert rule.issues == ()
     assert (rule.fee.total, rule.fee.value) == (Decimal(1500), Decimal(100))
+
+
+# --- read_rules, with Gemini replaced by a fake ------------------------------
+
+class _Gemini(list):
+    """Calls made to the fake Gemini, as (text, model); ``fail_for`` holds texts that fail."""
+
+    def __init__(self):
+        super().__init__()
+        self.fail_for: set[str] = set()
+
+
+@pytest.fixture
+def gemini(monkeypatch, deals):
+    """A fake ``extract`` that returns the perfect reading of each deal."""
+    by_text = {rule_text(d): PERFECT[d.deal_id] for d in deals.values()}
+    calls = _Gemini()
+
+    def extract(text, *, api_key, model):
+        calls.append((text, model))
+        if text in calls.fail_for:
+            raise RuntimeError("503 unavailable")
+        return by_text[text]
+    monkeypatch.setattr(calculator.rules, "extract", extract)
+    monkeypatch.setattr(calculator.rules, "_readings", {})
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    return calls
+
+
+def test_read_rules_reads_every_deal(deals, gemini):
+    result = read_rules(deals.values())
+    assert result.model == "gemini-2.5-flash" and result.error is None
+    assert result.rules == {k: reference_rule(d) for k, d in deals.items()}
+    assert len(gemini) == 8
+
+
+def test_readings_are_remembered_until_refresh(deals, gemini):
+    read_rules(deals.values())
+    read_rules(deals.values())
+    assert len(gemini) == 8  # the second run used the remembered readings
+    read_rules(deals.values(), refresh=True)
+    assert len(gemini) == 16
+
+
+def test_another_model_reads_again(deals, gemini, monkeypatch):
+    read_rules(deals.values())
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-2.5-pro")
+    result = read_rules(deals.values())
+    assert result.model == "gemini-2.5-pro"
+    assert len(gemini) == 16 and gemini[-1][1] == "gemini-2.5-pro"
+
+
+def test_a_failed_reading_is_an_issue_and_is_retried(deals, gemini):
+    gemini.fail_for.add(rule_text(deals["D02"]))
+    result = read_rules(deals.values())
+    assert result.rules["D02"].issues == (
+        "no se pudo leer la regla con gemini-2.5-flash: RuntimeError: 503 unavailable",)
+    assert result.rules["D01"] == reference_rule(deals["D01"])  # the rest are read
+    gemini.fail_for.clear()
+    assert read_rules(deals.values()).rules["D02"] == reference_rule(deals["D02"])
+    assert len(gemini) == 8 + 1  # only the failed one was asked again
+
+
+def test_missing_key_sends_every_deal_to_review(deals, gemini, monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY")
+    result = read_rules(deals.values())
+    assert result.error == "GEMINI_API_KEY is not set"
+    assert all(r.issues for r in result.rules.values())
+    assert gemini == []

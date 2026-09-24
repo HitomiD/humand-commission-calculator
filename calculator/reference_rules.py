@@ -1,7 +1,7 @@
 """Hand-written commission rules for the 8 deals in ``data/``.
 
-They are the reference answers the LLM parser (phase 4) is tested against,
-and, until that parser is wired into the app, the rules the calculation uses. Only the
+They are the reference answers the LLM readings are evaluated against
+(``tests/eval_rules.py``), and the rules the calculation tests use. Only the
 meaning of the free text is written here; the base always comes from the
 deal's ``commission_on_expansion`` column (D-17).
 """

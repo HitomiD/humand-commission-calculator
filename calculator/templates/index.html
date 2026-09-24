@@ -4,6 +4,14 @@
 
 {% block content %}
 
+<section>
+  <form method="get" action="/">
+    <button type="submit">Recalcular</button>
+    <button type="submit" name="releer" value="1">Releer reglas con Gemini</button>
+  </form>
+  <p>"Recalcular" fetches the payments again and reuses the rules already read; "Releer reglas con Gemini" also reads every rule again.</p>
+</section>
+
 {# Problems come first: a blocked deal or a failed fetch must never go
    unnoticed (D-22, D-26). #}
 {% if fetch_error %}
@@ -11,6 +19,14 @@
   <h2>Payments could not be fetched</h2>
   <p>{{ fetch_error }}</p>
   <p>No commission can be calculated until the payment list is complete.</p>
+</section>
+{% endif %}
+
+{% if rules and rules.error %}
+<section>
+  <h2>Rules could not be read</h2>
+  <p>{{ rules.error }}</p>
+  <p>Every deal's new payments go to review until the rules can be read.</p>
 </section>
 {% endif %}
 
@@ -43,7 +59,7 @@
 {% if lines is not none %}
 <section>
   <h2>Commission lines ({{ lines | length }})</h2>
-  <p>Rules: hand-written reference rules, until the LLM parser exists.</p>
+  <p>Reglas leídas por {{ rules.model }}.</p>
   <table>
     <tr>
       <th>Deal</th><th>Payment</th><th>Base</th><th>Base / month</th><th>Months</th>

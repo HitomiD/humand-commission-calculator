@@ -1,6 +1,7 @@
 """Tests for the web routes: the page and the JSON view render the real data.
 
-The payment fetch is replaced by a fixed result, so no mock server is needed.
+The payment fetch is replaced by a fixed result, and the rule reading by the
+hand-written rules, so neither the mock server nor Gemini is needed.
 """
 
 import pytest
@@ -11,6 +12,8 @@ from calculator.app import _months_done, app
 from calculator.data import DataIssue, load_inputs
 from calculator.models import Payment
 from calculator.payments import FetchError, FetchResult, FetchStats, PaymentError
+from calculator.reference_rules import reference_rule
+from calculator.rules import RulesResult
 
 client = TestClient(app)
 
@@ -25,6 +28,18 @@ FETCHED = FetchResult(
 @pytest.fixture(autouse=True)
 def fake_fetch(monkeypatch):
     monkeypatch.setattr(calculator.app, "fetch_payments", lambda: FETCHED)
+
+
+@pytest.fixture(autouse=True)
+def fake_rules(monkeypatch):
+    """Hand-written rules instead of Gemini; records each call's ``refresh``."""
+    calls = []
+
+    def read(deals, *, refresh=False):
+        calls.append(refresh)
+        return RulesResult({d.deal_id: reference_rule(d) for d in deals}, "fake-model")
+    monkeypatch.setattr(calculator.app, "read_rules", read)
+    return calls
 
 
 def test_index_shows_all_deals():
@@ -87,3 +102,34 @@ def test_index_shows_commission_lines():
     assert "Cliente Andes - comision pago m6-m6 - restan 6" in text
     lines = client.get("/api/data").json()["lines"]
     assert lines[1]["payment_id"] == "D01_p06" and lines[1]["monto_a_comisionar"] == "63.00"
+
+
+def test_page_says_which_model_read_the_rules():
+    assert "Reglas leídas por fake-model" in client.get("/").text
+    assert client.get("/api/data").json()["rules_model"] == "fake-model"
+
+
+def test_buttons_recalculate_or_reread(fake_rules):
+    text = client.get("/").text
+    assert "Recalcular" in text and "Releer reglas con Gemini" in text
+    client.get("/")
+    client.get("/?releer=1")
+    client.get("/api/data?releer=1")
+    assert fake_rules == [False, False, True, True]
+
+
+def test_rules_error_is_shown(monkeypatch):
+    def read(deals, *, refresh=False):
+        return RulesResult({}, "fake-model", "GEMINI_API_KEY is not set")
+    monkeypatch.setattr(calculator.app, "read_rules", read)
+    text = client.get("/").text
+    assert "Rules could not be read" in text and "GEMINI_API_KEY is not set" in text
+    assert client.get("/api/data").json()["rules_error"] == "GEMINI_API_KEY is not set"
+
+
+def test_no_rules_read_when_the_fetch_fails(monkeypatch, fake_rules):
+    def fail():
+        raise FetchError("down")
+    monkeypatch.setattr(calculator.app, "fetch_payments", fail)
+    client.get("/")
+    assert fake_rules == []

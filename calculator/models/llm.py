@@ -5,7 +5,8 @@ numbers are floats, and every field is required but may be null, because
 Gemini's structured output accepts only a subset of JSON Schema. Nothing
 here is trusted: ``calculator.rules.to_rule`` validates it into a
 ``CommissionRule``. The field descriptions are sent to the model as part of
-the schema, so they are written as instructions.
+the schema, so they are written as instructions, in Spanish like the
+prompt (D-39).
 """
 
 from typing import Literal
@@ -16,31 +17,31 @@ FeeMode = Literal["unspecified", "fixed_per_payment", "pct_of_commission", "as_m
 
 
 class ExtractedTier(BaseModel):
-    from_month: int = Field(description="First commission month of this tier, counting from 1.")
+    from_month: int = Field(description="Primer mes de comisión de este tramo, contando desde 1.")
     to_month: int | None = Field(
-        description="Last commission month of this tier, inclusive. Null when the tier has no end "
+        description="Último mes de comisión de este tramo, inclusive. Null si el tramo no tiene fin "
                     "('perpetuo', 'en adelante').")
-    pct: float = Field(description="Commission percentage for these months, from 0 to 100.")
+    pct: float = Field(description="Porcentaje de comisión para estos meses, de 0 a 100.")
 
 
 class ExtractedFee(BaseModel):
-    total: float = Field(description="Total partner fee owed, in USD.")
+    total: float = Field(description="Total del partner fee adeudado, en USD.")
     mode: FeeMode = Field(
-        description="How much of each commission goes to the fee, as the text states it. "
-                    "'unspecified' when the text doesn't say how much per payment.")
+        description="Cuánto de cada comisión va al fee, según lo dice el texto. "
+                    "'unspecified' si el texto no dice cuánto por pago.")
     value: float | None = Field(
-        description="USD per payment for 'fixed_per_payment', percentage of each commission for "
-                    "'pct_of_commission'; null for the other modes.")
+        description="USD por pago para 'fixed_per_payment', porcentaje de cada comisión para "
+                    "'pct_of_commission'; null para los otros modos.")
 
 
 class RuleExtraction(BaseModel):
     tiers: list[ExtractedTier] = Field(
-        description="Commission tiers in order, starting at month 1, with no gaps or overlaps.")
-    do_not_pay: bool = Field(description="True when the text says this commission must not be paid.")
-    fee: ExtractedFee | None = Field(description="Partner fee to recover from commissions, or null.")
+        description="Tramos de comisión en orden, desde el mes 1, sin huecos ni superposiciones.")
+    do_not_pay: bool = Field(description="True si el texto dice que esta comisión no se debe pagar.")
+    fee: ExtractedFee | None = Field(description="Partner fee a recuperar de las comisiones, o null.")
     base_mencionada: Literal["total", "contrato"] | None = Field(
-        description="The base the text mentions: 'total' for the whole amount billed (e.g. 'sobre la "
-                    "totalidad'), 'contrato' for the contract amount; null when it mentions none.")
+        description="La base que menciona el texto: 'total' para la totalidad de lo facturado (p. ej. "
+                    "'sobre la totalidad'), 'contrato' para el monto de contrato; null si no menciona ninguna.")
     flags: list[str] = Field(
-        description="Anything ambiguous, contradictory or not covered by this schema, in Spanish, "
-                    "one short sentence each. Empty when the text is clear.")
+        description="Lo ambiguo, contradictorio o que este esquema no cubre, en castellano, "
+                    "una oración corta cada uno. Vacío si el texto es claro.")
