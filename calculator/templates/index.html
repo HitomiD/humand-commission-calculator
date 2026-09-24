@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{# Main page. It grows one section per phase: inputs now, then fetched
+   payments (phase 2), then commission lines (phase 3 onward). #}
+
+{% block content %}
+
+{# Data problems come first: a blocked deal must never go unnoticed (D-22). #}
+{% if data.issues %}
+<section>
+  <h2>Data issues ({{ data.issues | length }})</h2>
+  <p>Blocked deals (their payments go to review): {{ data.blocked_deals | sort | join(", ") or "none" }}</p>
+  <table>
+    <tr><th>File</th><th>Row</th><th>Deal</th><th>Problem</th><th>Blocks deal</th></tr>
+    {% for i in data.issues %}
+    <tr><td>{{ i.file }}</td><td>{{ i.row }}</td><td>{{ i.deal_id or "—" }}</td><td>{{ i.message }}</td><td>{{ "yes" if i.blocks_deal else "no" }}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+{% endif %}
+
+<section>
+  <h2>Deals ({{ data.deals | length }})</h2>
+  <table>
+    <tr>
+      <th>Deal</th><th>Client</th><th>Partner</th><th>Commission rule</th><th>Notes</th>
+      <th>Base</th><th>Contract / month</th><th>CRM status</th><th>First payment</th>
+      <th>Months already commissioned</th>
+    </tr>
+    {% for d in data.deals %}
+    <tr>
+      <td>{{ d.deal_id }}</td>
+      <td>{{ d.nombre_negocio }}</td>
+      <td>{{ d.partner }}</td>
+      <td>{{ d.partner_commission_pct }}</td>
+      <td>{{ d.partner_commission_notes or "" }}</td>
+      <td>{{ "totalidad" if d.commission_on_expansion else "contrato" }}</td>
+      <td>{{ d.amount_by_contract }}</td>
+      <td>{{ d.estado_pago_comision or "" }}</td>
+      <td>{{ d.date_of_first_payment or "" }}</td>
+      <td>{{ months_done.get(d.deal_id, 0) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</section>
+
+<section>
+  <h2>Approved payments ({{ data.approved | length }})</h2>
+  <table>
+    <tr><th>Deal</th><th>Payment</th><th>Months covered</th></tr>
+    {% for a in data.approved %}
+    <tr><td>{{ a.deal_id }}</td><td>{{ a.payment_id }}</td><td>{{ a.meses_cubiertos }}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+
+{% endblock %}

@@ -1,6 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
+  "functions": {
+    "api/index.py": {
+      "includeFiles": "{data,calculator/templates}/**"
+    }
+  },
   "rewrites": [
     { "source": "/", "destination": "/api/index" },
     { "source": "/api/:path*", "destination": "/api/index" }

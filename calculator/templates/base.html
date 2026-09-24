@@ -1,0 +1,14 @@
+<!doctype html>
+{# Shared layout. Pages fill the "content" block. Kept unstyled on purpose
+   until the calculation works (decision D-23). #}
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Commission calculator{% endblock %}</title>
+</head>
+<body>
+  <h1>Commission calculator</h1>
+  {% block content %}{% endblock %}
+</body>
+</html>
