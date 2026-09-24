@@ -1,10 +1,16 @@
 """Settings read from environment variables.
 
 Read on each call, not at import time, so tests and a running server pick up
-changes without reloading the module.
+changes without reloading the module. For local development, a ``.env`` file
+in the working directory is loaded once at import; variables already set in
+the environment win over it, and on Vercel there is no file to load.
 """
 
 import os
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 class ConfigError(Exception):

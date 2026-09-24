@@ -10,11 +10,13 @@ The calculator and payment mock live in separate source directories. Vercel serv
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-export PAYMENTS_API_URL=http://localhost:4000/api/stripe/payments
+cp .env.example .env  # then fill in the values
 uvicorn api.index:app --reload --port 8000
 ```
 
-`PAYMENTS_API_URL` is the full URL of the payments endpoint, and it is required. The calculator treats the payments API as an external service: point it at the local mock (below) or at any deployment, for example `https://<deployment>.vercel.app/api/stripe/payments`. On Vercel, set it in the project's environment variables. If it isn't set, the page says so instead of loading payments.
+Settings are read from the environment, and a `.env` file in the project root is loaded automatically (it is git-ignored; `.env.example` lists the variables). A variable already exported in the shell wins over the file.
+
+`PAYMENTS_API_URL` is the full URL of the payments endpoint, and it is required. The calculator treats the payments API as an external service: point it at the local mock (below) or at any deployment, for example `https://<deployment>.vercel.app/api/stripe/payments`. On Vercel, set it in the project's environment variables. If it isn't set, the page says so instead of loading payments. `GEMINI_API_KEY` is required for the rule parser (phase 4); `GEMINI_MODEL` is optional and defaults to `gemini-2.5-flash`.
 
 Open `http://localhost:8000/`. The initial calculator response is `{"message":"hello world from calculator"}`.
 
