@@ -2,11 +2,17 @@
 
 Calculates the commissions owed to partners for each new client payment. It reads the deals and the approved payments from CSV, fetches the payments from the Stripe-like API, has an LLM (Gemini) read each deal's free-text commission rule, and computes one line per new payment for a person to approve.
 
-**Deployed:** https://humand-commission-calculator.vercel.app/ · `/` lines and the rules read · `/partners` one transfer per partner with a combined memo · `/api/commissions` the same as JSON · `/api/commissions.csv` the lines in the exact format of the expected output
+**Deployed:** https://humand-commission-calculator.vercel.app/ · `/` lines and the rules read · `/partners` one transfer per partner with a combined memo · `/api/commissions` JSON · `/api/commissions.csv` CSV
+
+The two exports differ on purpose. `/api/commissions` is this tool's own format: every line with its trace (the rule used, the months already commissioned, the tier breakdown, the fee) plus, per deal, the text sent to the model and its raw reply, so each number can be followed back to its source. `/api/commissions.csv` has the same lines in the format of `expected_output_PUBLIC.csv` (the same columns, order and number format, no trace), in case the results need to be consumed or compared that way.
 
 The assumptions behind the results (month counting, statuses, the partner fee…) are in [docs/assumptions.md](docs/assumptions.md).
 
 ## Run it locally
+
+Needs Python 3 and Node. `./run_local.sh` does everything: it creates `.venv` and installs the requirements, creates `.env` from `.env.example` the first time (set `GEMINI_API_KEY` there), starts the payments mock on :4000 and the calculator on http://localhost:8000. Ctrl+C stops both.
+
+If you'd rather do it by hand, these are the commands it runs, plus the tests:
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
