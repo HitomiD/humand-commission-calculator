@@ -79,3 +79,11 @@ def test_missing_payments_url_is_shown(monkeypatch):
     monkeypatch.delenv("PAYMENTS_API_URL", raising=False)
     text = client.get("/").text
     assert "Payments could not be fetched" in text and "PAYMENTS_API_URL is not set" in text
+
+
+def test_index_shows_commission_lines():
+    text = client.get("/").text
+    assert "Commission lines (2)" in text  # D01_p06 and the payment error
+    assert "Cliente Andes - comision pago m6-m6 - restan 6" in text
+    lines = client.get("/api/data").json()["lines"]
+    assert lines[1]["payment_id"] == "D01_p06" and lines[1]["monto_a_comisionar"] == "63.00"

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{# Main page. It grows one section per phase: inputs and fetched payments
-   now, then commission lines (phase 3 onward). #}
+{# Main page. It grows one section per phase: commission lines, fetched
+   payments and inputs so far. #}
 
 {% block content %}
 
@@ -35,6 +35,39 @@
     <tr><th>File</th><th>Row</th><th>Deal</th><th>Problem</th><th>Blocks deal</th></tr>
     {% for i in data.issues %}
     <tr><td>{{ i.file }}</td><td>{{ i.row }}</td><td>{{ i.deal_id or "—" }}</td><td>{{ i.message }}</td><td>{{ "all deals" if i.blocks_all else ("yes" if i.blocks_deal else "no") }}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+{% endif %}
+
+{% if lines is not none %}
+<section>
+  <h2>Commission lines ({{ lines | length }})</h2>
+  <p>Rules: hand-written reference rules, until the LLM parser exists.</p>
+  <table>
+    <tr>
+      <th>Deal</th><th>Payment</th><th>Base</th><th>Base / month</th><th>Months</th>
+      <th>Amount</th><th>Status</th><th>Memo</th><th>Reason</th><th>Breakdown</th>
+    </tr>
+    {% for l in lines %}
+    <tr>
+      <td>{{ l.deal_id or "—" }}</td>
+      <td>{{ l.payment_id or "—" }}</td>
+      <td>{{ l.base_usada or "" }}</td>
+      <td>{{ l.base_mensual if l.base_mensual is not none else "" }}</td>
+      <td>{{ l.meses_elegibles or "" }}</td>
+      <td>{{ l.monto_a_comisionar }}</td>
+      <td>{{ l.estado }}</td>
+      <td>{{ l.memo or "" }}</td>
+      <td>{{ l.reason or "" }}</td>
+      <td>
+        {% if l.trace %}
+        {{ l.trace.months_before }} months before; payment {{ l.trace.payment_amount }} for {{ l.trace.months_in_payment }} month(s)<br>
+        {% for s in l.trace.slices %}m{{ s.from_month }}-m{{ s.to_month }}: {{ s.months }} × {{ l.trace.base_mensual }} × {{ s.pct }}% = {{ s.amount }}<br>{% endfor %}
+        {% for f in l.trace.flags %}{{ f }}<br>{% endfor %}
+        {% endif %}
+      </td>
+    </tr>
     {% endfor %}
   </table>
 </section>

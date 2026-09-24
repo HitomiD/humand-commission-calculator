@@ -5,7 +5,7 @@ Jinja templates. It is served locally by Uvicorn and on Vercel through
 ``api/index.py``.
 
 A single page grows with each phase of the implementation plan: it currently
-shows the loaded inputs and the fetched payments; commission lines come later.
+shows the commission lines, the fetched payments and the loaded inputs.
 """
 
 from pathlib import Path
@@ -14,9 +14,11 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
+from calculator.commission import build_lines, months_already
 from calculator.config import ConfigError
 from calculator.data import InputData, load_inputs
 from calculator.payments import FetchError, FetchResult, fetch_payments
+from calculator.reference_rules import reference_rule
 
 # Resolved from this file, like DATA_DIR, so it works under Uvicorn and Vercel.
 templates = Jinja2Templates(directory=Path(__file__).resolve().parent / "templates")
@@ -25,15 +27,13 @@ app = FastAPI(title="Commission calculator")
 
 
 def _months_done(data: InputData) -> dict[str, int | None]:
-    # Temporary: shown on the page until phase 3 moves reconciliation into
-    # commission.py. Sum of meses_cubiertos per deal, never a row count (D-04).
-    # A blocked deal gets None: its approved rows can't be trusted (D-22).
-    blocked = data.blocked_deals
-    totals: dict[str, int | None] = {d: None for d in blocked}
-    for a in data.approved:
-        if a.deal_id not in blocked:
-            totals[a.deal_id] = totals.get(a.deal_id, 0) + a.meses_cubiertos
-    return totals
+    return months_already(data.approved, data.blocked_deals)
+
+
+def _lines(data: InputData, fetched: FetchResult | None):
+    # No lines without the full payment list: a partial one would hide payments.
+    # Rules are the hand-written ones until the LLM parser exists (phase 4).
+    return build_lines(data, fetched, reference_rule) if fetched else None
 
 
 def _fetch() -> tuple[FetchResult | None, str | None]:
@@ -54,6 +54,7 @@ def index(request: Request):
         "months_done": _months_done(data),
         "fetched": fetched,
         "fetch_error": fetch_error,
+        "lines": _lines(data, fetched),
     })
 
 
@@ -64,6 +65,7 @@ def data_json() -> dict:
     data = load_inputs()
     fetched, fetch_error = _fetch()
     return {
+        "lines": _lines(data, fetched),
         "deals": data.deals,
         "approved_payments": data.approved,
         "issues": data.issues,
