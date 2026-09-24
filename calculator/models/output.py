@@ -54,7 +54,7 @@ class CommissionLine(BaseModel):
     monto_a_comisionar: Decimal = Decimal("0.00")
     estado: Estado
     memo: str | None = None
-    # Added by us:
+    # Not in the expected output:
     partner: str | None = None
     reason: str | None = None  # why a line is no_corresponde or requiere_revision
     trace: Trace | None = None

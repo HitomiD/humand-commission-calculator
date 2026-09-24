@@ -20,7 +20,7 @@ The choices that affect the results, and why. Where the data settles a question,
 ## Status
 
 - `completo`: no months left after this payment. `incompleto`: months left. `en_curso`: the rule has no end.
-- `no_corresponde` (our addition): nothing to pay, amount 0 and no memo. Used for "NO PAGAR" and for a payment arriving after the rule's months are used up (`D08`: 12 of 12 done when `D08_p13` arrives).
+- `no_corresponde` (not in the expected output): nothing to pay, amount 0 and no memo. Used for "NO PAGAR" and for a payment arriving after the rule's months are used up (`D08`: 12 of 12 done when `D08_p13` arrives).
 - **"NO PAGAR" still uses up the months** (`D03`): the notes say to update the sheet but not pay, so the payment is recorded and a later one starts after it.
 - `requiere_revision`: anything that can't be computed with certainty. It's shown with its reason, never dropped. A deal's later payments also wait, since their months would be a guess.
 
@@ -42,9 +42,9 @@ The choices that affect the results, and why. Where the data settles a question,
 
 ## Partner fee (`D04`) — the main judgement call
 
-`D04`: "Hay que ir descontando de los pagos de las comisiones hasta cubrir ese monto" (1,500 USD). **Our reading: the text says until when to deduct, not how much from each commission, so any amount per payment would be a guess and the line goes to review.** A fee is only calculated when the text gives the total and a fixed amount or percentage per payment.
+`D04`: "Hay que ir descontando de los pagos de las comisiones hasta cubrir ese monto" (1,500 USD). **Chosen reading: the text says until when to deduct, not how much from each commission, so any amount per payment would be a guess and the line goes to review.** A fee is only calculated when the text gives the total and a fixed amount or percentage per payment.
 
-The alternative reading is "take each commission whole until the fee is covered". It would pay `D04_p01` 3,600 − 1,500 = **2,100**, `en_curso`. It's a plausible business reading. We chose review because it's money going out and the text doesn't say it.
+The alternative reading is "take each commission whole until the fee is covered". It would pay `D04_p01` 3,600 − 1,500 = **2,100**, `en_curso`. It's a plausible business reading. Review was chosen because it's money going out and the text doesn't say it.
 
 Also: for a deal with approved history, nothing records how much fee the manual process already deducted, so a fee on such a deal goes to review. When a capped rule ends with fee still owed, that last line goes to review: how to collect the rest is a business decision.
 

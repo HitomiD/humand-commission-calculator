@@ -39,7 +39,7 @@ def gemini_api_key() -> str:
 
 
 def gemini_model() -> str:
-    """Gemini model id. Defaults to 2.5 Flash, the one checked with our key (D-33)."""
+    """Gemini model id. Defaults to 2.5 Flash, the one checked with the provided key (D-33)."""
     return os.environ.get("GEMINI_MODEL", "").strip() or "gemini-2.5-flash"
 
 
