@@ -37,7 +37,8 @@
       <td>{{ d.amount_by_contract }}</td>
       <td>{{ d.estado_pago_comision or "" }}</td>
       <td>{{ d.date_of_first_payment or "" }}</td>
-      <td>{{ months_done.get(d.deal_id, 0) }}</td>
+      {% set m = months_done.get(d.deal_id, 0) %}
+      <td>{{ "blocked" if m is none else m }}</td>
     </tr>
     {% endfor %}
   </table>

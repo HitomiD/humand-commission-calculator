@@ -22,12 +22,15 @@ templates = Jinja2Templates(directory=Path(__file__).resolve().parent / "templat
 app = FastAPI(title="Commission calculator")
 
 
-def _months_done(data: InputData) -> dict[str, int]:
+def _months_done(data: InputData) -> dict[str, int | None]:
     # Temporary: shown on the page until phase 3 moves reconciliation into
     # commission.py. Sum of meses_cubiertos per deal, never a row count (D-04).
-    totals: dict[str, int] = {}
+    # A blocked deal gets None: its approved rows can't be trusted (D-22).
+    blocked = data.blocked_deals
+    totals: dict[str, int | None] = {d: None for d in blocked}
     for a in data.approved:
-        totals[a.deal_id] = totals.get(a.deal_id, 0) + a.meses_cubiertos
+        if a.deal_id not in blocked:
+            totals[a.deal_id] = totals.get(a.deal_id, 0) + a.meses_cubiertos
     return totals
 
 

@@ -1,9 +1,15 @@
 """Loaders for the CSV inputs in ``data/`` (pipeline step 1).
 
 A bad row never stops the run and is never dropped silently. It becomes a
-``DataIssue`` tagged with its deal, and that deal is *blocked*: its new
-payments are shown for human review instead of being calculated, while every
-other deal is processed normally (decision D-22).
+``DataIssue`` tagged with its deal, and most issues mark that deal as
+*blocked* (see ``InputData.blocked_deals``). The loader only records this;
+it is the calculation (phase 3) that must skip blocked deals and send their
+new payments to human review, while every other deal is processed normally
+(decision D-22).
+
+Valid rows are not filtered by block status: ``approved`` still holds the
+valid rows of blocked deals, and every copy of a duplicated ``payment_id``.
+Consumers must check ``blocked_deals`` before using them.
 
 Only problems that make the whole file untrustworthy (missing file, wrong
 header) raise ``DataError`` and stop the run.
@@ -103,9 +109,11 @@ def _duplicates(path: Path, rows: list[tuple[int, _Row]], key: str) -> tuple[set
 def load_inputs(data_dir: Path = DATA_DIR) -> InputData:
     """Load ``hubspot_deals.csv`` and ``pagos_aprobados.csv``.
 
-    - Bad deal row, or duplicate ``deal_id``: the deal is blocked and left out.
-    - Bad approved row, or duplicate ``payment_id``: the deal is blocked,
-      because its months already commissioned are unknown.
+    - Bad deal row, or duplicate ``deal_id``: the deal is marked blocked and
+      left out of ``deals`` (there is no valid row to keep).
+    - Bad approved row, or duplicate ``payment_id``: the deal is marked
+      blocked, because its months already commissioned are unknown. Its
+      valid approved rows stay in ``approved``.
     - Approved row for a deal not in the deals file: reported, blocks nothing.
     """
     deals_path, approved_path = data_dir / DEALS_FILE, data_dir / APPROVED_FILE

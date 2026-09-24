@@ -2,7 +2,8 @@
 
 from fastapi.testclient import TestClient
 
-from calculator.app import app
+from calculator.app import _months_done, app
+from calculator.data import DataIssue, load_inputs
 
 client = TestClient(app)
 
@@ -22,3 +23,14 @@ def test_data_json():
     assert len(body["deals"]) == 8
     assert len(body["approved_payments"]) == 30
     assert body["issues"] == [] and body["blocked_deals"] == []
+
+
+def test_months_done_skips_blocked_deals():
+    data = load_inputs()
+    first = data.approved[0]
+    # A duplicated payment_id must not double the months; the deal is blocked.
+    data.approved.append(first)
+    data.issues.append(DataIssue("pagos_aprobados.csv", 99, first.deal_id, "duplicate"))
+    months = _months_done(data)
+    assert months[first.deal_id] is None
+    assert all(v is not None for k, v in months.items() if k != first.deal_id)
