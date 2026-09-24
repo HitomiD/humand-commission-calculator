@@ -2,7 +2,9 @@
 
 Calculates the commissions owed to partners for each new client payment. It reads the deals and the approved payments from CSV, fetches the payments from the Stripe-like API, has an LLM (Gemini) read each deal's free-text commission rule, and computes one line per new payment for a person to approve.
 
-**Deployed:** `<deployment URL>` · `/` lines and the rules read · `/partners` one transfer per partner with a combined memo · `/api/commissions` the same as JSON · `/api/commissions.csv` the lines in the exact format of the expected output
+**Deployed:** https://humand-commission-calculator.vercel.app/ · `/` lines and the rules read · `/partners` one transfer per partner with a combined memo · `/api/commissions` the same as JSON · `/api/commissions.csv` the lines in the exact format of the expected output
+
+The assumptions behind the results (month counting, statuses, the partner fee…) are in [docs/assumptions.md](docs/assumptions.md).
 
 ## Run it locally
 
