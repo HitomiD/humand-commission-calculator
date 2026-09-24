@@ -9,10 +9,13 @@ button) makes Gemini read every rule again; a plain page load reuses the
 readings this instance remembers (D-40).
 """
 
+import csv
+import io
+from decimal import Decimal
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.templating import Jinja2Templates
 
 from calculator import pipeline
@@ -71,6 +74,35 @@ def commissions_json(recalcular: bool = False) -> dict:
         "transfers": r.transfers,
         "rules": _rules_json(r),
     }
+
+
+# The expected output's columns, in its order (tests/fixtures/expected_output_PUBLIC.csv).
+EXPECTED_COLUMNS = ["deal_id", "payment_id", "base_usada", "base_mensual", "meses_elegibles",
+                    "monto_a_comisionar", "estado", "memo"]
+
+
+def _csv_value(value) -> str:
+    """A cell as the expected output writes it: numbers without trailing
+    zeros (63, 3754.4), blanks for missing values."""
+    if value is None:
+        return ""
+    if isinstance(value, Decimal):
+        return format(value.normalize(), "f")
+    return str(value)
+
+
+# The lines in the exact format of the expected output, so they can be
+# compared with it cell by cell. Lines in review are included, with blanks.
+@app.get("/api/commissions.csv")
+def commissions_csv(recalcular: bool = False) -> PlainTextResponse:
+    r = pipeline.run(refresh=recalcular)
+    out = io.StringIO()
+    writer = csv.writer(out, lineterminator="\n")
+    writer.writerow(EXPECTED_COLUMNS)
+    for line in r.lines or []:
+        writer.writerow([_csv_value(getattr(line, c)) for c in EXPECTED_COLUMNS])
+    return PlainTextResponse(out.getvalue(), media_type="text/csv",
+                             headers={"Content-Disposition": 'attachment; filename="commissions.csv"'})
 
 
 # Everything the run used, inputs included, for debugging.

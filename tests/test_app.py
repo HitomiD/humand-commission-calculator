@@ -169,3 +169,14 @@ def test_missing_input_file_is_shown(monkeypatch, fake_rules):
     assert client.get("/partners").status_code == 200
     assert client.get("/api/commissions").json()["load_error"].startswith("hubspot_deals.csv")
     assert fake_rules == []
+
+
+def test_commissions_csv_matches_the_expected_output_format():
+    from pathlib import Path
+    response = client.get("/api/commissions.csv")
+    assert response.headers["content-type"].startswith("text/csv")
+    rows = response.text.splitlines()
+    expected = (Path(__file__).parent / "fixtures" / "expected_output_PUBLIC.csv").read_text().splitlines()
+    assert rows[0] == expected[0]  # same columns, same order
+    assert expected[1] in rows  # D01_p06, written exactly as the expected output writes it
+    assert "D09,D09_x,,,,0,requiere_revision," in rows  # a line in review: blanks, amount 0
