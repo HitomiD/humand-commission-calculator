@@ -22,6 +22,12 @@
 //   https://TU-APP.vercel.app/api/stripe/payments
 // ============================================================================
 
+// [Project note by hitomi] Supplied file, kept with its original data and logic. The
+// Next.js-only lines (this `dynamic` export and the App Router GET handler
+// below) are commented out so Node can load the file as CommonJS. The active
+// export is the Node handler at the end, used both by api/stripe/payments.js on
+// Vercel and by mock-api/dev-server.cjs locally.
+
 //export const dynamic = 'force-dynamic';
 
 const PAYMENTS = [
