@@ -112,10 +112,10 @@ def test_page_says_which_model_read_the_rules():
 
 def test_buttons_recalculate_or_reread(fake_rules):
     text = client.get("/").text
-    assert "Recalcular" in text and "Releer reglas con Gemini" in text
+    assert "Recalcular" in text and "Releer" not in text
     client.get("/")
-    client.get("/?releer=1")
-    client.get("/api/data?releer=1")
+    client.get("/?recalcular=1")
+    client.get("/api/data?recalcular=1")
     assert fake_rules == [False, False, True, True]
 
 
@@ -139,7 +139,7 @@ def test_no_rules_read_when_the_fetch_fails(monkeypatch, fake_rules):
 def test_partners_page_groups_lines_into_transfers():
     response = client.get("/partners")
     assert response.status_code == 200
-    assert "Partner Sur · 63.00" in response.text
+    assert "Partner Sur · USD 63.00" in response.text
     assert "Partner Sur - 1 comision - total 63.00: Cliente Andes - comision pago m6-m6 - restan 6" in response.text
 
 

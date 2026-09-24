@@ -63,10 +63,9 @@
       <a href="/partners" {% if path == "/partners" %}aria-current="page"{% endif %}>Transferencias por partner</a>
       <a href="/api/commissions">JSON</a>
     </nav>
-    {# "Recalcular" reuses the rules already read; "Releer" asks Gemini again (D-40). #}
+    {# "Recalcular" fetches the payments and has Gemini read every rule again (D-40). #}
     <form class="run" method="get" action="{{ path }}">
-      <button type="submit" class="primary">Recalcular</button>
-      <button type="submit" name="releer" value="1">Releer reglas con Gemini</button>
+      <button type="submit" class="primary" name="recalcular" value="1">Recalcular</button>
     </form>
   </header>
   <main>

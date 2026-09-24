@@ -13,7 +13,7 @@
 
 {% for t in r.transfers %}
 <section>
-  <h2>{{ t.partner }} · {{ t.total }}</h2>
+  <h2>{{ t.partner }} · {{ t.total | usd }}</h2>
   {% if t.memo %}
   <p class="note">Memo de la transferencia:</p>
   <pre>{{ t.memo }}</pre>
@@ -23,7 +23,7 @@
     <tr>
       <td>{{ l.deal_id }}</td><td>{{ l.payment_id }}</td><td>{{ l.meses_elegibles }}</td>
       <td><span class="badge {{ l.estado }}">{{ l.estado }}</span></td>
-      <td class="num">{{ l.monto_a_comisionar }}</td><td>{{ l.memo }}</td>
+      <td class="num">{{ l.monto_a_comisionar | usd }}</td><td>{{ l.memo }}</td>
     </tr>
     {% endfor %}
   </table>
