@@ -1,14 +1,16 @@
 {% extends "base.html" %}
-{# Main page: the commission lines, the rules they used, and the inputs. #}
+{# Main page: the commission lines, the rules they used, and the inputs.
+   Column titles are the field names of the expected output and the input
+   files; derived columns use the same style (D-43). #}
 
 {% block content %}
 
 {% if r.fetched and r.fetched.errors %}
 <section class="problem">
-  <h2>Payment errors ({{ r.fetched.errors | length }})</h2>
-  <p>These payments are not used; each becomes a line in review.</p>
+  <h2>Pagos con errores ({{ r.fetched.errors | length }})</h2>
+  <p>Estos pagos no se usan; cada uno queda como una línea en revisión.</p>
   <table>
-    <tr><th>Payment</th><th>Deal</th><th>Problem</th></tr>
+    <tr><th>payment_id</th><th>deal_id</th><th>message</th></tr>
     {% for e in r.fetched.errors %}
     <tr><td>{{ e.payment_id or "—" }}</td><td>{{ e.deal_id or "—" }}</td><td>{{ e.message }}</td></tr>
     {% endfor %}
@@ -18,12 +20,12 @@
 
 {% if r.data and r.data.issues %}
 <section class="problem">
-  <h2>Data issues ({{ r.data.issues | length }})</h2>
-  <p>A deal marked as blocked has its new payments sent to review.</p>
+  <h2>Problemas en los datos ({{ r.data.issues | length }})</h2>
+  <p>Los pagos nuevos de un deal bloqueado van a revisión.</p>
   <table>
-    <tr><th>File</th><th>Row</th><th>Deal</th><th>Problem</th><th>Blocks deal</th></tr>
+    <tr><th>file</th><th>row</th><th>deal_id</th><th>message</th><th>blocks_deal</th></tr>
     {% for i in r.data.issues %}
-    <tr><td>{{ i.file }}</td><td>{{ i.row }}</td><td>{{ i.deal_id or "—" }}</td><td>{{ i.message }}</td><td>{{ "all deals" if i.blocks_all else ("yes" if i.blocks_deal else "no") }}</td></tr>
+    <tr><td>{{ i.file }}</td><td>{{ i.row }}</td><td>{{ i.deal_id or "—" }}</td><td>{{ i.message }}</td><td>{{ "todos los deals" if i.blocks_all else ("sí" if i.blocks_deal else "no") }}</td></tr>
     {% endfor %}
   </table>
 </section>
@@ -32,10 +34,10 @@
 {% if r.lines is not none %}
 {% set paid = r.lines | selectattr("memo") | list %}
 <section>
-  <h2>Commission lines ({{ r.lines | length }})</h2>
-  <p class="note">One line per new payment. Reglas leídas por {{ r.rules.model }}. The deal links to the rule it used; "detalle" shows how the amount was reached.</p>
+  <h2>Líneas de comisión ({{ r.lines | length }})</h2>
+  <p class="note">Una línea por pago nuevo. Reglas leídas por {{ r.rules.model }}. El deal enlaza a la regla que usó; "detalle" muestra cómo se llegó al monto.</p>
   <div class="stats">
-    <span>To pay: <b>{{ paid | sum(attribute="monto_a_comisionar") }}</b> in {{ paid | length }} line(s)</span>
+    <span>A pagar: <b>{{ paid | sum(attribute="monto_a_comisionar") }}</b> en {{ paid | length }} línea(s)</span>
     {% for estado in ["completo", "incompleto", "en_curso", "no_corresponde", "requiere_revision"] %}
     {% set n = r.lines | selectattr("estado", "equalto", estado) | list | length %}
     {% if n %}<span><span class="badge {{ estado }}">{{ estado }}</span> {{ n }}</span>{% endif %}
@@ -43,8 +45,8 @@
   </div>
   <table>
     <tr>
-      <th>Deal</th><th>Payment</th><th>Base</th><th>Base / mes</th><th>Meses</th>
-      <th>Monto</th><th>Estado</th><th>Memo</th><th>Motivo</th><th>Detalle</th>
+      <th>deal_id</th><th>payment_id</th><th>base_usada</th><th>base_mensual</th><th>meses_elegibles</th>
+      <th>monto_a_comisionar</th><th>estado</th><th>memo</th><th>reason</th><th>trace</th>
     </tr>
     {% for l in r.lines %}
     <tr>
@@ -79,9 +81,9 @@
    the model returned, and the rule the calculation used (D-41). #}
 <section>
   <h2>Reglas leídas ({{ r.rules.rules | length }})</h2>
-  <p class="note">Read by {{ r.rules.model }}. Only the two rule fields are sent; the base always comes from <code>commission_on_expansion</code>. A rule with problems is not used: its deal's payments go to review.</p>
+  <p class="note">Leídas por {{ r.rules.model }}. Solo se envían los dos campos de la regla; la base siempre sale de <code>commission_on_expansion</code>. Una regla con problemas no se usa: los pagos de su deal van a revisión.</p>
   <table>
-    <tr><th>Deal</th><th>Texto enviado</th><th>Lo que devolvió el modelo</th><th>Regla usada</th><th>Problemas</th></tr>
+    <tr><th>deal_id</th><th>source_text</th><th>reading</th><th>rule</th><th>issues</th></tr>
     {% for deal_id, rule in r.rules.rules.items() %}
     {% set reading = r.rules.readings.get(deal_id) %}
     <tr id="regla-{{ deal_id }}">
@@ -98,16 +100,16 @@
 
 {% if r.data %}
 <section>
-  <h2>Inputs</h2>
-  <p class="note">What the run used: the two CSV files and the payments fetched from the API.</p>
+  <h2>Datos de entrada</h2>
+  <p class="note">Lo que usó esta corrida: los dos archivos CSV y los pagos obtenidos de la API.</p>
 
   <details>
-    <summary>Deals ({{ r.data.deals | length }})</summary>
+    <summary>Deals — hubspot_deals.csv ({{ r.data.deals | length }})</summary>
     <table>
       <tr>
-        <th>Deal</th><th>Client</th><th>Partner</th><th>Commission rule</th><th>Notes</th>
-        <th>Base</th><th>Contract / month</th><th>CRM status</th><th>First payment</th>
-        <th>Months already commissioned</th>
+        <th>deal_id</th><th>nombre_negocio</th><th>partner</th><th>partner_commission_pct</th><th>partner_commission_notes</th>
+        <th>commission_on_expansion</th><th>amount_by_contract</th><th>estado_pago_comision</th><th>date_of_first_payment</th>
+        <th>meses_ya_comisionados</th>
       </tr>
       {% for d in r.data.deals %}
       <tr>
@@ -116,21 +118,21 @@
         <td>{{ d.partner }}</td>
         <td>{{ d.partner_commission_pct }}</td>
         <td>{{ d.partner_commission_notes or "" }}</td>
-        <td>{{ "totalidad" if d.commission_on_expansion else "contrato" }}</td>
+        <td>{{ "Yes" if d.commission_on_expansion else "No" }}</td>
         <td class="num">{{ d.amount_by_contract }}</td>
         <td>{{ d.estado_pago_comision or "" }}</td>
         <td>{{ d.date_of_first_payment or "" }}</td>
         {% set m = r.months_done.get(d.deal_id, 0) %}
-        <td>{{ "blocked" if m is none else m }}</td>
+        <td>{{ "bloqueado" if m is none else m }}</td>
       </tr>
       {% endfor %}
     </table>
   </details>
 
   <details>
-    <summary>Approved payments ({{ r.data.approved | length }})</summary>
+    <summary>Pagos aprobados — pagos_aprobados.csv ({{ r.data.approved | length }})</summary>
     <table>
-      <tr><th>Deal</th><th>Payment</th><th>Months covered</th></tr>
+      <tr><th>deal_id</th><th>payment_id</th><th>meses_cubiertos</th></tr>
       {% for a in r.data.approved %}
       <tr><td>{{ a.deal_id }}</td><td>{{ a.payment_id }}</td><td>{{ a.meses_cubiertos }}</td></tr>
       {% endfor %}
@@ -140,19 +142,20 @@
   {% if r.fetched %}
   {% set approved_ids = r.data.approved | map(attribute="payment_id") | list %}
   <details>
-    <summary>Fetched payments ({{ r.fetched.payments | length }})</summary>
-    <p class="note">Pages fetched: {{ r.fetched.stats.pages }} · requests retried (429 or network error): {{ r.fetched.stats.retries }}</p>
+    <summary>Pagos obtenidos de la API ({{ r.fetched.payments | length }})</summary>
+    <p class="note">Páginas obtenidas: {{ r.fetched.stats.pages }} · requests reintentados (429 o error de red): {{ r.fetched.stats.retries }}</p>
     <table>
-      <tr><th>Deal</th><th>Payment</th><th>Date</th><th>Amount</th><th>Term</th><th>Months</th><th>Already approved</th></tr>
+      <tr><th>deal_id</th><th>payment_id</th><th>payment_date</th><th>amount</th><th>currency</th><th>payment_term</th><th>meses_del_term</th><th>ya_aprobado</th></tr>
       {% for p in r.fetched.payments %}
       <tr>
         <td>{{ p.deal_id }}</td>
         <td>{{ p.payment_id }}</td>
         <td>{{ p.payment_date }}</td>
-        <td class="num">{{ p.amount }} {{ p.currency }}</td>
+        <td class="num">{{ p.amount }}</td>
+        <td>{{ p.currency }}</td>
         <td>{{ p.payment_term.value }}</td>
         <td>{{ p.payment_term.months }}</td>
-        <td>{{ "yes" if p.payment_id in approved_ids else "no" }}</td>
+        <td>{{ "sí" if p.payment_id in approved_ids else "no" }}</td>
       </tr>
       {% endfor %}
     </table>

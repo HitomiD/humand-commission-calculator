@@ -46,9 +46,9 @@ def fake_rules(monkeypatch):
 def test_index_shows_all_deals():
     response = client.get("/")
     assert response.status_code == 200
-    assert "Deals (8)" in response.text
-    assert "Approved payments (30)" in response.text
-    assert "Data issues" not in response.text  # the real files are clean
+    assert "Deals — hubspot_deals.csv (8)" in response.text
+    assert "Pagos aprobados — pagos_aprobados.csv (30)" in response.text
+    assert "Problemas en los datos" not in response.text  # the real files are clean
     for n in range(1, 9):
         assert f"<td>D0{n}</td>" in response.text
 
@@ -73,9 +73,9 @@ def test_months_done_skips_blocked_deals():
 
 def test_index_shows_fetched_payments_and_errors():
     text = client.get("/").text
-    assert "Fetched payments (1)" in text and "<td>D01_p06</td>" in text
-    assert "requests retried (429 or network error): 2" in text
-    assert "Payment errors (1)" in text and "<td>D09_x</td>" in text
+    assert "Pagos obtenidos de la API (1)" in text and "<td>D01_p06</td>" in text
+    assert "requests reintentados (429 o error de red): 2" in text
+    assert "Pagos con errores (1)" in text and "<td>D09_x</td>" in text
 
 
 def test_failed_fetch_is_shown_and_inputs_still_render(monkeypatch):
@@ -84,9 +84,9 @@ def test_failed_fetch_is_shown_and_inputs_still_render(monkeypatch):
     monkeypatch.setattr(calculator.pipeline, "fetch_payments", fail)
     response = client.get("/")
     assert response.status_code == 200
-    assert "Payments could not be fetched" in response.text
+    assert "No se pudieron obtener los pagos" in response.text
     assert "gave up after 8 attempts" in response.text
-    assert "Deals (8)" in response.text
+    assert "Deals — hubspot_deals.csv (8)" in response.text
     assert client.get("/api/data").json()["fetch_error"] == "gave up after 8 attempts"
 
 
@@ -94,12 +94,12 @@ def test_missing_payments_url_is_shown(monkeypatch):
     monkeypatch.undo()  # use the real fetch_payments
     monkeypatch.delenv("PAYMENTS_API_URL", raising=False)
     text = client.get("/").text
-    assert "Payments could not be fetched" in text and "PAYMENTS_API_URL is not set" in text
+    assert "No se pudieron obtener los pagos" in text and "PAYMENTS_API_URL is not set" in text
 
 
 def test_index_shows_commission_lines():
     text = client.get("/").text
-    assert "Commission lines (2)" in text  # D01_p06 and the payment error
+    assert "Líneas de comisión (2)" in text  # D01_p06 and the payment error
     assert "Cliente Andes - comision pago m6-m6 - restan 6" in text
     lines = client.get("/api/data").json()["lines"]
     assert lines[1]["payment_id"] == "D01_p06" and lines[1]["monto_a_comisionar"] == "63.00"
@@ -124,7 +124,7 @@ def test_rules_error_is_shown(monkeypatch):
         return RulesResult({}, "fake-model", "GEMINI_API_KEY is not set")
     monkeypatch.setattr(calculator.pipeline, "read_rules", read)
     text = client.get("/").text
-    assert "Rules could not be read" in text and "GEMINI_API_KEY is not set" in text
+    assert "No se pudieron leer las reglas" in text and "GEMINI_API_KEY is not set" in text
     assert client.get("/api/data").json()["rules_error"] == "GEMINI_API_KEY is not set"
 
 
@@ -165,7 +165,7 @@ def test_missing_input_file_is_shown(monkeypatch, fake_rules):
     monkeypatch.setattr(calculator.pipeline, "load_inputs", broken)
     response = client.get("/")
     assert response.status_code == 200
-    assert "Input files could not be loaded" in response.text and "file not found" in response.text
+    assert "No se pudieron cargar los archivos de entrada" in response.text and "file not found" in response.text
     assert client.get("/partners").status_code == 200
     assert client.get("/api/commissions").json()["load_error"].startswith("hubspot_deals.csv")
     assert fake_rules == []

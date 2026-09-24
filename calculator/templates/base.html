@@ -5,7 +5,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Commission calculator{% endblock %}</title>
+  <title>{% block title %}Calculadora de comisiones{% endblock %}</title>
   <style>
     :root {
       --bg: #fafaf9; --surface: #ffffff; --text: #1c1917; --muted: #57534e; --border: #e7e5e4;
@@ -56,11 +56,11 @@
 </head>
 <body>
   <header>
-    <h1>Commission calculator</h1>
+    <h1>Calculadora de comisiones</h1>
     {% set path = request.url.path %}
     <nav>
-      <a href="/" {% if path == "/" %}aria-current="page"{% endif %}>Lines</a>
-      <a href="/partners" {% if path == "/partners" %}aria-current="page"{% endif %}>Transfers by partner</a>
+      <a href="/" {% if path == "/" %}aria-current="page"{% endif %}>Líneas</a>
+      <a href="/partners" {% if path == "/partners" %}aria-current="page"{% endif %}>Transferencias por partner</a>
       <a href="/api/commissions">JSON</a>
     </nav>
     {# "Recalcular" reuses the rules already read; "Releer" asks Gemini again (D-40). #}
@@ -72,23 +72,23 @@
   <main>
     {% if r.load_error %}
     <section class="problem">
-      <h2>Input files could not be loaded</h2>
+      <h2>No se pudieron cargar los archivos de entrada</h2>
       <p>{{ r.load_error }}</p>
-      <p>Nothing can be calculated until the input files are fixed.</p>
+      <p>No se puede calcular nada hasta corregir los archivos de entrada.</p>
     </section>
     {% endif %}
     {% if r.fetch_error %}
     <section class="problem">
-      <h2>Payments could not be fetched</h2>
+      <h2>No se pudieron obtener los pagos</h2>
       <p>{{ r.fetch_error }}</p>
-      <p>No commission can be calculated until the payment list is complete.</p>
+      <p>No se calcula ninguna comisión hasta tener la lista de pagos completa.</p>
     </section>
     {% endif %}
     {% if r.rules and r.rules.error %}
     <section class="problem">
-      <h2>Rules could not be read</h2>
+      <h2>No se pudieron leer las reglas</h2>
       <p>{{ r.rules.error }}</p>
-      <p>Every deal's new payments go to review until the rules can be read.</p>
+      <p>Los pagos nuevos de todos los deals van a revisión hasta que se puedan leer las reglas.</p>
     </section>
     {% endif %}
     {% block content %}{% endblock %}
