@@ -26,11 +26,19 @@ The choices that affect the results, and why. Where the data settles a question,
 
 ## Reading the rule with the LLM
 
-- **Gemini only sees `partner_commission_pct` and `partner_commission_notes`**, with no amounts or names, and fills a fixed schema at temperature 0 (configurable, D-48). Validation in code decides whether the rule can be used.
+- **Gemini only sees `partner_commission_pct` and `partner_commission_notes`**, with no amounts or names, and fills a fixed schema at temperature 0 by default (configurable). Validation in code decides whether the rule can be used.
 - **A datum the text doesn't give is never filled in.** The model leaves the field empty and explains in a flag; any flag or failed check sends the deal to review. There is no confidence score: a model's rating of its own certainty isn't reliable.
 - **The commission is counted in months, not payments**, and every tier needs a duration. "15% mensual" (no duration) and rules defined by payments go to review.
 - **Thresholds and several partners** are detected and sent to review, not calculated.
-- **Evaluation:** 80 texts (the 8 real deals and 72 invented ones), 3 runs each. 77 are right in every run and 1 is always sent to review (safe). The 2 misses are self-contradictory texts the model sometimes resolves instead of flagging.
+- **Evaluation** (`tests/fixtures/rule_cases.json`, run with `python -m tests.eval_rules`): 80 texts, the 8 real deals and 72 invented ones (22 of them written after the last prompt change, so the prompt wasn't tuned to them), 3 runs each, measured twice. 77 are right in every run. One (a fee "en 4 cuotas") is sent to review in 5 of 6 readings where it could have been paid: safe. Two self-contradictory texts ("20% 12 meses, perpetuo"; "Pagar normalmente. NO PAGAR.") are sometimes resolved by the model instead of flagged. Readings varied between runs only on ambiguous texts.
+
+## LLM choices
+
+- **Gemini 2.5 Flash**, the model the provided key was checked with. Reading a rule is a small extraction task, and the evaluation above shows whether the model is good enough; `GEMINI_MODEL` changes it.
+- **Through Google's `google-genai` SDK rather than plain HTTP calls:** it takes the schema directly and returns the parsed reply, retries rate limits and server errors, and is kept up to date by Google as the API changes. The call sits behind one function, so tests replace it and never touch the network, and another provider would be one more implementation of it.
+- **Temperature 0:** the same text gives the same rule, and a wrong reading repeats, so the evaluation finds it. It isn't fully deterministic (the model reasons before answering), which is where the variation above comes from.
+- **Called on every recalculation, remembered in memory, no database.** Each run recomputes everything from the inputs; `pagos_aprobados.csv` stays the record of what has been paid, and the tool only proposes lines. A reading is kept in memory while the instance runs, keyed by model, temperature and text, so a changed text is read again.
+- **The prompt is in Spanish, like the texts,** and teaches the conventions with invented examples; none of the evaluation cases is one of them (a test checks it).
 
 ## Partner fee (`D04`) — the main judgement call
 
@@ -42,12 +50,13 @@ Also: for a deal with approved history, nothing records how much fee the manual 
 
 ## Data and payments
 
-- **A bad CSV row blocks only its deal**, whose payments go to review. A missing file or column stops the run and is shown on the page.
+- **A bad CSV row blocks only the deals it affects**, whose payments go to review. Usually that's its own deal; an approved-payments row with no `deal_id` blocks every deal, since its months could belong to any of them. A missing file or column stops the run and is shown on the page.
 - **A payment served twice counts once**; if the two copies differ, it goes to review.
 - **"Already paid" means the `payment_id` is in `pagos_aprobados.csv`.** `estado_pago_comision` and `date_of_first_payment` are informational only.
+- **Other data (`DATA_DIR`)** is read with the same validation. Payments still come from `PAYMENTS_API_URL`, so a mock payment for a deal not in the folder becomes a review line ("deal no encontrado"); to test your own payments, edit the `PAYMENTS` list in `mock-api/mock_stripe_endpoint.js` or point the URL to another endpoint.
 
 ## Not done, and what production would need
 
-- **Not done:** calculating threshold and multi-partner rules, and loading the config from the UI.
+- **Not done:** calculating threshold and multi-partner rules, and uploading your own data from the page (locally, `DATA_DIR` does it).
 - **Possible improvement:** read each rule several times and use it only if the readings agree (catches the contradictory texts above), possibly with a moderate temperature, so ambiguity shows up as disagreement. To be measured with the evaluation set.
 - **For production:** persistence of approved lines and of the rule used for each (today every run recomputes from the inputs), a human approval step writing back to the approved-payments record, and an audit log.

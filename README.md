@@ -1,68 +1,57 @@
 # Commission calculator
 
-Calculates the commissions owed to partners for each new client payment. It reads the deals and the approved payments from CSV, fetches the payments from the Stripe-like API, has an LLM (Gemini) read each deal's free-text commission rule, and computes one line per new payment for a person to approve.
+Calculates the commission owed to a partner for each client payment not yet in `pagos_aprobados.csv`. An LLM (Gemini) reads each deal's free-text rule; the rest is plain, tested Python.
 
-**Deployed:** https://humand-commission-calculator.vercel.app/ · `/` lines and the rules read · `/partners` one transfer per partner with a combined memo · `/api/commissions` JSON · `/api/commissions.csv` CSV
+**Deployed:** https://humand-commission-calculator.vercel.app/ · `/partners` one transfer per partner · `/api/commissions` JSON with each line's full trace · `/api/commissions.csv` the same lines in the exact format of `expected_output_PUBLIC.csv`
 
-The two exports differ on purpose. `/api/commissions` is this tool's own format: every line with its trace (the rule used, the months already commissioned, the tier breakdown, the fee) plus, per deal, the text sent to the model and its raw reply, so each number can be followed back to its source. `/api/commissions.csv` has the same lines in the format of `expected_output_PUBLIC.csv` (the same columns, order and number format, no trace), in case the results need to be consumed or compared that way.
-
-The assumptions behind the results (month counting, statuses, the partner fee…) are in [docs/assumptions.md](docs/assumptions.md).
+The assumptions behind the results, with the evidence for each, are in [docs/assumptions.md](docs/assumptions.md).
 
 ## Run it locally
 
-Needs Python 3 and Node. `./run_local.sh` does everything: it creates `.venv` and installs the requirements, creates `.env` from `.env.example` the first time (set `GEMINI_API_KEY` there), starts the payments mock on :4000 and the calculator on http://localhost:8000. Ctrl+C stops both.
-
-If you'd rather do it by hand, these are the commands it runs, plus the tests:
+Needs Python 3 and Node. `./run_local.sh` sets up `.venv` and `.env`, and starts the payments mock (:4000) and the app (http://localhost:8000); Ctrl+C stops both. By hand:
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt        # app + pytest
 cp .env.example .env                       # then set GEMINI_API_KEY
-node mock-api/dev-server.cjs               # terminal 1: payments mock on :4000
-uvicorn api.index:app --reload --port 8000 # terminal 2: open http://localhost:8000
-pytest                                     # tests; no network, Gemini is faked
-python -m tests.eval_rules --runs 3        # optional: real Gemini on 80 rule texts vs their expected reading
+node mock-api/dev-server.cjs               # terminal 1: payments mock
+uvicorn api.index:app --reload --port 8000 # terminal 2: the app
+pytest                                     # offline tests; Gemini is faked
+python -m tests.eval_rules --runs 3        # optional: real Gemini on 80 rule texts
 ```
 
 ## Where to set the API key
 
-| Variable | Required | What it is |
-|---|---|---|
-| `GEMINI_API_KEY` | yes | The LLM key. Locally in `.env` (git-ignored); on Vercel in the project's environment variables |
-| `PAYMENTS_API_URL` | yes | Full payments endpoint, e.g. `http://localhost:4000/api/stripe/payments` |
-| `GEMINI_MODEL` | no | Defaults to `gemini-2.5-flash` |
-| `GEMINI_TEMPERATURE` | no | 0 to 2, defaults to 0. The "Temperatura" field next to "Recalcular" overrides it for that run |
-| `DATA_DIR` | no | A folder with your own `hubspot_deals.csv` and `pagos_aprobados.csv` (same columns as `data/`); defaults to `data/`. The page shows which folder it used. Payments still come from `PAYMENTS_API_URL`: to test your own, edit the `PAYMENTS` list in `mock-api/mock_stripe_endpoint.js` or point the URL to another endpoint |
+In `.env` locally (git-ignored), or in the Vercel project's environment variables.
 
-A missing setting doesn't crash the page: it says what's missing. Without the payments URL nothing is computed; without the Gemini key every line goes to review.
+| Variable | Required | |
+|---|---|---|
+| `GEMINI_API_KEY` | yes | The LLM key |
+| `PAYMENTS_API_URL` | yes | Payments endpoint, e.g. `http://localhost:4000/api/stripe/payments` |
+| `GEMINI_MODEL` | no | Default `gemini-2.5-flash` |
+| `GEMINI_TEMPERATURE` | no | 0–2, default 0; the page's "Temperatura" field overrides it for one run |
+| `DATA_DIR` | no | A folder with your own two CSVs; default `data/` |
+
+A missing setting is shown on the page instead of crashing it.
 
 ## How the commission rule is modeled
 
-The LLM only turns text into a rule. Everything after that is plain, tested Python.
-
-1. **What the LLM sees:** only `partner_commission_pct` and `partner_commission_notes`, no amounts or names. It fills a JSON schema (structured output, temperature 0 by default): tiers `{from_month, to_month | null, pct}`, `do_not_pay`, a partner `fee` (only when the text gives the total and how much to deduct per payment), the base the text mentions, and `flags`. One general rule: a datum the text doesn't give is left empty and explained in `flags`; the model never fills a gap. The prompt is in Spanish, like the texts, and teaches the conventions with invented examples ("año 1" = months 1–12, "perpetuo" = no end).
-2. **Validation** turns that into a `CommissionRule`: percentages 0–100, tiers starting at month 1 with no gaps or overlaps, a fee the text mentions must be complete (checked in code, so an incomplete fee can't be dropped silently), and a base that agrees with the data. Each problem, and each model flag, becomes an issue; a rule with issues is never used.
-3. **The base is never taken from the LLM:** it comes from `commission_on_expansion` (`Yes`: the payment spread over its months; `No`: the contract amount). A base mentioned in the text is only a cross-check.
-4. **Calculation:** months already commissioned = sum of `meses_cubiertos`; a new payment covers the next N months (N from `payment_term`, dates ignored); months past the rule's end are cut; each month is priced at its own tier; the amount is rounded once, to cents. `estado` is `completo`, `incompleto`, `en_curso` (no end), `no_corresponde` or `requiere_revision`.
-5. **Memo:** each paid line gets `{cliente} - comision pago m{a}-m{b} - restan {N|sin_limite}`. When one transfer groups several deals of a partner (`/partners`), its memo is a single line that keeps every line's memo, so each amount can be matched: `Partner Sur - 2 comisiones - total 1185.00: Cliente Andes - comision pago m6-m6 - restan 6 | Cliente Fohn - comision pago m9-m12 - restan 0`. Lines in review are listed under the partner but not paid.
+- **The LLM only reads text.** Gemini gets `partner_commission_pct` and `partner_commission_notes` (no amounts or names) and fills a fixed JSON schema: tiers `{from_month, to_month | null, pct}`, `do_not_pay`, a complete partner fee, the base the text mentions, and `flags`. What the text doesn't state is left empty and flagged, never filled in.
+- **Code validates it** into a `CommissionRule` (tiers from month 1 with no gaps, percentages 0–100, a mentioned fee complete, a mentioned base matching the data); any problem or flag sends the deal to review.
+- **The base never comes from the LLM:** `commission_on_expansion` `No` = the contract amount; `Yes` = the payment divided by the months it covers.
+- **Calculation:** months done = sum of `meses_cubiertos`; a payment covers the next N months of its term (dates ignored), cut at the rule's end; each month is priced at its tier; the amount is rounded once. Memo: `{cliente} - comision pago m{a}-m{b} - restan {N|sin_limite}`; `/partners` joins a partner's memos into one line per transfer.
+- **When Gemini is called:** once per deal, in parallel, on every "Recalcular"; a page load reuses the readings the running instance holds in memory. Nothing is stored.
 
 ## Missing data and unreliable responses
 
-Nothing is guessed silently and nothing is dropped: whatever can't be computed with certainty becomes a `requiere_revision` line with its reason and no amount, and the rest of the run goes on.
+Nothing is guessed or dropped: what can't be computed with certainty becomes a `requiere_revision` line with its reason and amount 0, and the rest of the run continues.
 
-- **LLM:** a failed call (after the SDK's retries), an invalid reply, a rule that fails validation, or a model flag sends that deal to review, with the model's own explanation when it gave one. The page shows, per deal, the text sent, the model's raw reply and the rule used. Evaluated on 80 texts (the 8 real deals plus 72 invented ones: other phrasings, typos, English, fees, conditions, missing durations, rules by payment, contradictions; 22 written after the last prompt change), 3 runs: 77 right in every run, and 1 always sent to review where it could have been paid (safe). The 2 misses are self-contradictory texts that the model sometimes resolved instead of flagging. Readings only varied between runs on those ambiguous texts.
-- **CSV:** a malformed or duplicated row blocks only its deal; a missing file or column is shown as an error.
-- **Payments:** an invalid payment (unknown term, other currency…) becomes a review line; the rest are used.
-- **Other cases sent to review, not guessed:** a payment below the contract amount; a partner fee mentioned without its total or its deduction per payment; a fee still owed when the rule ends; later payments of a deal already in review. "NO PAGAR" records the months but pays 0.
-- **Audit trail:** every line carries its trace (rule, months before, tier breakdown, fee), and every number traces back to its payment, deal and rule text.
+- **LLM:** a failed call, an invalid reply, a failed validation or a model flag sends that deal to review, with the model's explanation; the page shows each text sent, the raw reply and the rule used. Evaluated on 80 rule texts, 3 runs each: 77 right every time (details in `docs/assumptions.md`).
+- **Data:** a bad CSV row blocks only the deals it affects; an invalid payment, or one below the contract amount, becomes a review line.
+- **Audit trail:** every line carries its trace: the rule, the months before, the tier breakdown and the fee.
 
-## Pagination, rate limits and idempotency
+## Pagination, rate limits and not processing a payment twice
 
-- **Pagination:** follows `starting_after` with the last `payment_id` until `has_more` is false. A page that brings no new payment stops the fetch instead of looping, and 1000 pages is a hard cap.
-- **Rate limits:** a 429 or network error is retried after `Retry-After` (capped), up to 8 attempts per page. If a page still fails, no lines are computed at all, since a partial list would hide payments; the page shows the error.
-- **No double processing:**
-  - a payment already in `pagos_aprobados.csv` (same `payment_id`) is never commissioned again;
-  - a payment served twice counts once; if the two copies differ, it goes to review;
-  - several new payments of one deal get consecutive months, never the same ones.
-
-  Each run recomputes from the inputs and pays nothing itself: it proposes lines, a person approves them, and approved payments go into `pagos_aprobados.csv`. Running it twice gives the same lines, not two payments.
+- **Pagination:** follows `starting_after` until `has_more` is false; a page with no new payment stops the fetch instead of looping.
+- **Rate limits:** a 429 or network error is retried after `Retry-After`, up to 8 attempts per page. If a page still fails, no lines are computed, since a partial list would hide payments, and the page says why.
+- **No double processing:** a `payment_id` already in `pagos_aprobados.csv` is skipped; a payment served twice counts once (differing copies go to review); several new payments of one deal get consecutive months. The tool only proposes lines for a person to approve, so running it twice gives the same lines, not two payments.
