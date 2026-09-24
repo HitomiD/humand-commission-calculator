@@ -52,7 +52,7 @@
     .incompleto, .en_curso { background: var(--run-bg); color: var(--run); }
     .requiere_revision { background: var(--warn-bg); color: var(--warn); }
     .no_corresponde { background: var(--off-bg); color: var(--off); }
-    .stats { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+    .stats { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 12px 0 16px; }
     .stats b { font-size: 1.1rem; }
     ul.plain { margin: 0; padding-left: 18px; }
   </style>
@@ -71,8 +71,8 @@
     {# "Recalcular" fetches the payments and has Gemini read every rule again (D-40),
        at the temperature in the field; it starts at GEMINI_TEMPERATURE (D-48). #}
     <form class="run" method="get" action="{{ path }}">
-      <label title="Temperatura con la que Gemini lee las reglas, de 0 a 2. Por defecto, GEMINI_TEMPERATURE.">
-        Temperatura
+      <label title="Temperatura del LLM (Gemini) al leer las reglas, de 0 a 2: más alta, respuestas más variables. Por defecto, GEMINI_TEMPERATURE.">
+        Temperatura del LLM
         <input type="number" name="temperatura" min="0" max="2" step="0.1" required
                value="{{ temperatura_form | num }}">
       </label>

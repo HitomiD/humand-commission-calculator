@@ -222,10 +222,10 @@ def test_temperature_from_the_page(fake_rules, monkeypatch):
     monkeypatch.delenv("GEMINI_TEMPERATURE", raising=False)
     text = client.get("/").text
     assert 'name="temperatura"' in text and 'value="0"' in text  # the setting's value
-    assert "Reglas leídas por fake-model a temperatura 0." in text
+    assert "Reglas leídas por fake-model (temperatura del LLM: 0)." in text
     text = client.get("/?recalcular=1&temperatura=0.7").text
     assert fake_rules.temperatures == [None, 0.7]
-    assert 'value="0.7"' in text and "a temperatura 0.7." in text
+    assert 'value="0.7"' in text and "(temperatura del LLM: 0.7)." in text
     assert 'href="/partners?temperatura=0.7"' in text  # kept when changing pages
     assert client.get("/api/data?temperatura=0.7").json()["rules_temperature"] == 0.7
 

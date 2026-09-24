@@ -35,7 +35,7 @@
 {% set paid = r.lines | selectattr("memo") | list %}
 <section>
   <h2>Líneas de comisión ({{ r.lines | length }})</h2>
-  <p class="note">Una línea por pago nuevo. Reglas leídas por {{ r.rules.model }}{% if r.rules.temperature is not none %} a temperatura {{ r.rules.temperature | num }}{% endif %}. El deal enlaza a la regla que usó; "detalle" muestra cómo se llegó al monto.</p>
+  <p class="note">Una línea por pago nuevo. Reglas leídas por {{ r.rules.model }}{% if r.rules.temperature is not none %} (temperatura del LLM: {{ r.rules.temperature | num }}){% endif %}. El deal enlaza a la regla que usó; "detalle" muestra cómo se llegó al monto.</p>
   <div class="stats">
     <span>A pagar: <b>{{ paid | sum(attribute="monto_a_comisionar") | usd }}</b> en {{ paid | length }} línea(s)</span>
     {% for estado in ["completo", "incompleto", "en_curso", "no_corresponde", "requiere_revision"] %}
@@ -81,7 +81,7 @@
    the model returned, and the rule the calculation used (D-41). #}
 <section>
   <h2>Reglas leídas ({{ r.rules.rules | length }})</h2>
-  <p class="note">Leídas por {{ r.rules.model }}{% if r.rules.temperature is not none %} a temperatura {{ r.rules.temperature | num }}{% endif %}. Solo se envían los dos campos de la regla; la base siempre sale de <code>commission_on_expansion</code>. Una regla con problemas no se usa: los pagos de su deal van a revisión.</p>
+  <p class="note">Leídas por {{ r.rules.model }}{% if r.rules.temperature is not none %} (temperatura del LLM: {{ r.rules.temperature | num }}){% endif %}. Solo se envían los dos campos de la regla; la base siempre sale de <code>commission_on_expansion</code>. Una regla con problemas no se usa: los pagos de su deal van a revisión.</p>
   <table>
     <tr><th>deal_id</th><th>source_text</th><th>reading</th><th>rule</th><th>issues</th></tr>
     {% for deal_id, rule in r.rules.rules.items() %}
