@@ -1,0 +1,4 @@
+deal_id,payment_id,base_usada,base_mensual,meses_elegibles,monto_a_comisionar,estado,memo
+D01,D01_p06,contrato,252,m6-m6,63,incompleto,Cliente Andes - comision pago m6-m6 - restan 6
+D05,D05_p05,totalidad(stripe),722,m5-m16,3754.4,en_curso,Cliente Eolo - comision pago m5-m16 - restan sin_limite
+D06,D06_p09,contrato,561,m9-m12,1122,completo,Cliente Fohn - comision pago m9-m12 - restan 0
