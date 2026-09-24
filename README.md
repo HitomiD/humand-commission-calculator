@@ -29,9 +29,28 @@ The mock endpoint is `http://localhost:4000/api/stripe/payments`. It may return 
 
 The CSVs in `data/` are validated row by row when they are loaded. A problem with one deal never stops the others from being calculated. Every problem is listed at the top of the page and in `/api/data`.
 
+**Both files**
+
 | Problem | Result |
 |---|---|
 | A file is missing, lacks a column, or isn't UTF-8 | The run stops with a clear error |
-| A malformed row (blank required field, invalid value, extra cells) or a duplicated `deal_id` / `payment_id` | That deal is **blocked**: its new payments go to manual review instead of being calculated |
-| An approved-payment row with no `deal_id` | **Every** deal is blocked, because those months could belong to any of them |
-| An approved row for an unknown deal, or a `payment_id` that doesn't start with `{deal_id}_` | Warning only; nothing is blocked |
+
+**Deals (`hubspot_deals.csv`)**
+
+| Problem | Result |
+|---|---|
+| A malformed row (blank required field, invalid value, extra cells) | The deal is **blocked** and left out of the deal list. Its new payments go to manual review |
+| A duplicated `deal_id` | The same, for every copy |
+| A blank `deal_id` | Reported, but there is no deal to block. A payment for a deal that isn't in the list will go to review too (planned, with the calculation) |
+
+**Approved payments (`pagos_aprobados.csv`)**
+
+| Problem | Result |
+|---|---|
+| A malformed row (blank required field, invalid value, extra cells) | The deal is **blocked**: its months already commissioned are unknown, so its new payments go to manual review |
+| A duplicated `payment_id` | Every deal involved is blocked |
+| A blank `deal_id` | **Every** deal is blocked, because those months could belong to any of them |
+| A row for a deal that isn't in the deals file | Warning only |
+| A `payment_id` that doesn't start with `{deal_id}_` | Warning only, for a person to check |
+
+A blocked deal's approved rows are still loaded, so code that uses them must check the blocked list first.
