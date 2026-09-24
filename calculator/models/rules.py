@@ -80,7 +80,7 @@ class CommissionRule(BaseModel):
 
     ``on_total`` comes from the deal's ``commission_on_expansion`` column,
     never from the rule text (D-17). A rule with ``issues`` is not used: its
-    deal's payments go to review.
+    deal's payments go to review (D-35).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -91,7 +91,7 @@ class CommissionRule(BaseModel):
     do_not_pay: bool = False  # e.g. D03 "NO PAGAR"
     fee: FeeDeduction | None = None  # partner fee to recover (D-13)
     issues: tuple[str, ...] = ()
-    source_hash: str  # hash of the rule text this was read from (D-16)
+    source_text: str  # the text this rule was read from (D-38)
 
     @property
     def max_months(self) -> int | None:

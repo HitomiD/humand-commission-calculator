@@ -111,7 +111,7 @@ def test_tier_issues():
 
 def test_max_months_comes_from_the_last_tier():
     def rule(*tiers):
-        return CommissionRule(deal_id="X", tiers=tiers, on_total=False, source_hash="h")
+        return CommissionRule(deal_id="X", tiers=tiers, on_total=False, source_text="t")
     assert rule(Tier(from_month=1, to_month=24, pct=35)).max_months == 24
     assert rule(Tier(from_month=1, to_month=12, pct=50), Tier(from_month=13, pct=30)).max_months is None
 

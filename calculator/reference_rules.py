@@ -1,15 +1,15 @@
 """Hand-written commission rules for the 8 deals in ``data/``.
 
 They are the reference answers the LLM parser (phase 4) is tested against,
-and, until that parser exists, the rules the calculation uses. Only the
+and, until that parser is wired into the app, the rules the calculation uses. Only the
 meaning of the free text is written here; the base always comes from the
 deal's ``commission_on_expansion`` column (D-17).
 """
 
-import hashlib
 from decimal import Decimal
 
 from calculator.models import CommissionRule, Deal, FeeDeduction, Tier
+from calculator.rules import rule_text
 
 _YEAR_1 = Tier(from_month=1, to_month=12, pct=Decimal(50))
 _YEAR_2_ON = Tier(from_month=13, to_month=None, pct=Decimal(30))
@@ -37,12 +37,6 @@ _MEANING: dict[str, dict] = {
 }
 
 
-def rule_text_hash(deal: Deal) -> str:
-    """Hash of the text a rule is read from, so a changed text is noticed (D-16)."""
-    text = f"{deal.partner_commission_pct}\n{deal.partner_commission_notes or ''}"
-    return hashlib.sha256(text.encode()).hexdigest()[:16]
-
-
 def reference_rule(deal: Deal) -> CommissionRule | None:
     """The hand-written rule for ``deal``, or None if there isn't one."""
     meaning = _MEANING.get(deal.deal_id)
@@ -51,6 +45,6 @@ def reference_rule(deal: Deal) -> CommissionRule | None:
     return CommissionRule(
         deal_id=deal.deal_id,
         on_total=deal.commission_on_expansion,
-        source_hash=rule_text_hash(deal),
+        source_text=rule_text(deal),
         **meaning,
     )
