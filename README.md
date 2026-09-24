@@ -28,6 +28,22 @@ node mock-api/dev-server.cjs
 
 The mock endpoint is `http://localhost:4000/api/stripe/payments`. It may return HTTP 429; retry after the `Retry-After` interval. The local server and Vercel function import the same handler from `mock-api/handler.cjs`.
 
+## Edge cases the calculation handles
+
+Every case below is covered by a test. When the system can't calculate a payment with certainty, the line is still shown, marked `requiere_revision`, with the reason and no amount paid.
+
+| Case | What the system does |
+|---|---|
+| A payment covers more months than the rule has left (D06: 6 months, 4 left) | Commissions only the remaining months (m9–m12) and marks the deal `completo` |
+| One payment spans two tiers (D05: m5–m16 across "50% year 1 / 30% year 2+") | Prices each month at its own tier: 8 × 50% + 4 × 30% |
+| A payment arrives after the rule's months are used up (D08: 12 of 12) | `no_corresponde`, amount 0 |
+| The deal's notes say not to pay (D03: "NO PAGAR") | Records the months but pays nothing |
+| Several new payments for the same deal | Numbers the months in order, so no month is paid twice |
+| The client pays less than the contract amount | Treated as a payment anomaly and sent to review |
+| A partner fee with no stated way to deduct it (D04: "ir descontando") | Sent to review instead of guessing an amount per payment |
+| A partner fee still owed when the rule's months run out | The last line goes to review, showing the gross amount, the deduction and the balance still owed |
+| A later payment of a deal whose earlier payment is in review | Also sent to review, since its month numbering would be a guess |
+
 ## How bad input data is handled
 
 The CSVs in `data/` are validated row by row when they are loaded. A problem with one deal never stops the others from being calculated. Every problem is listed at the top of the page and in `/api/data`.
