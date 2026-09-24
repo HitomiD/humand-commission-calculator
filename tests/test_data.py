@@ -95,3 +95,31 @@ def test_approved_row_for_unknown_deal_is_reported_but_blocks_nothing(data_dir):
     assert data.blocked_deals == set()
     (issue,) = data.issues
     assert issue.deal_id == "D99" and not issue.blocks_deal
+
+
+def test_row_with_extra_cells_blocks_that_deal(data_dir):
+    _append(data_dir / APPROVED_FILE, "D01,D01_x,1,oops")
+    data = load_inputs(data_dir)
+    assert data.blocked_deals == {"D01"}
+    assert "more cell(s) than the header" in data.issues[0].message
+
+
+def test_file_not_utf8_stops_the_run(data_dir):
+    with open(data_dir / APPROVED_FILE, "ab") as f:
+        f.write(b"D01,D01_\xe9,1\n")
+    with pytest.raises(DataError, match="not valid UTF-8"):
+        load_inputs(data_dir)
+
+
+def test_approved_row_without_deal_blocks_every_deal(data_dir):
+    _append(data_dir / APPROVED_FILE, ",D01_x,1")
+    data = load_inputs(data_dir)
+    assert data.blocked_deals == {d.deal_id for d in data.deals}
+    assert data.issues[0].blocks_all
+
+
+def test_payment_id_of_another_deal_is_reported_but_blocks_nothing(data_dir):
+    _append(data_dir / APPROVED_FILE, "D02,D01_x,1")
+    data = load_inputs(data_dir)
+    assert data.blocked_deals == set()
+    assert "doesn't start with 'D02_'" in data.issues[0].message

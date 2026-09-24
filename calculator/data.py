@@ -16,7 +16,8 @@ header) raise ``DataError`` and stop the run.
 """
 
 import csv
-from dataclasses import dataclass, field
+import re
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TypeVar
 
@@ -43,7 +44,8 @@ class DataIssue:
     """A problem with one row of an input file.
 
     ``deal_id`` is the raw value read from the row, when there is one. If
-    ``blocks_deal`` is true, that deal's payments must not be calculated.
+    ``blocks_deal`` is true, that deal's payments must not be calculated. If
+    ``blocks_all`` is true, no deal's payments may be calculated.
     """
 
     file: str
@@ -51,6 +53,7 @@ class DataIssue:
     deal_id: str | None
     message: str
     blocks_deal: bool = True
+    blocks_all: bool = False
 
 
 @dataclass
@@ -64,7 +67,10 @@ class InputData:
     @property
     def blocked_deals(self) -> set[str]:
         """Deals whose numbers cannot be trusted; their payments go to review."""
-        return {i.deal_id for i in self.issues if i.blocks_deal and i.deal_id}
+        blocked = {i.deal_id for i in self.issues if i.blocks_deal and i.deal_id}
+        if any(i.blocks_all for i in self.issues):
+            blocked |= {d.deal_id for d in self.deals}
+        return blocked
 
 
 def _read(path: Path, model: type[_Row]) -> tuple[list[tuple[int, _Row]], list[DataIssue]]:
@@ -75,21 +81,34 @@ def _read(path: Path, model: type[_Row]) -> tuple[list[tuple[int, _Row]], list[D
     if not path.is_file():
         raise DataError(f"{path.name}: file not found at {path}")
     rows, issues = [], []
-    with open(path, newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        missing = set(model.model_fields) - set(reader.fieldnames or [])
-        if missing:
-            raise DataError(f"{path.name}: missing columns {sorted(missing)}")
-        for line, raw in enumerate(reader, start=2):
-            try:
-                rows.append((line, model(**raw)))
-            except ValidationError as e:
-                problems = "; ".join(
-                    f"{'.'.join(map(str, err['loc']))}: {err['msg']}" for err in e.errors()
-                )
-                deal_id = (raw.get("deal_id") or "").strip() or None
-                issues.append(DataIssue(path.name, line, deal_id, problems))
+    try:
+        with open(path, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            missing = set(model.model_fields) - set(reader.fieldnames or [])
+            if missing:
+                raise DataError(f"{path.name}: missing columns {sorted(missing)}")
+            for line, raw in enumerate(reader, start=2):
+                _parse_row(path, line, raw, model, rows, issues)
+    except UnicodeDecodeError as e:
+        raise DataError(f"{path.name}: not valid UTF-8 ({e.reason} at byte {e.start})") from e
     return rows, issues
+
+
+def _parse_row(path: Path, line: int, raw: dict, model: type[_Row], rows: list, issues: list) -> None:
+    """Parse one CSV row into ``model``, or record why it can't be used."""
+    deal_id = (raw.get("deal_id") or "").strip() or None
+    # DictReader puts cells beyond the header under the key None. Extra cells
+    # usually mean an unquoted comma shifted the columns, so no value is trusted.
+    if None in raw:
+        issues.append(DataIssue(path.name, line, deal_id, f"{len(raw[None])} more cell(s) than the header"))
+        return
+    try:
+        rows.append((line, model(**raw)))
+    except ValidationError as e:
+        problems = "; ".join(
+            f"{'.'.join(map(str, err['loc']))}: {err['msg']}" for err in e.errors()
+        )
+        issues.append(DataIssue(path.name, line, deal_id, problems))
 
 
 def _duplicates(path: Path, rows: list[tuple[int, _Row]], key: str) -> tuple[set[str], list[DataIssue]]:
@@ -114,7 +133,11 @@ def load_inputs(data_dir: Path = DATA_DIR) -> InputData:
     - Bad approved row, or duplicate ``payment_id``: the deal is marked
       blocked, because its months already commissioned are unknown. Its
       valid approved rows stay in ``approved``.
+    - Approved row with a blank ``deal_id``: every deal is blocked, since its
+      months could belong to any of them (O-04).
     - Approved row for a deal not in the deals file: reported, blocks nothing.
+    - ``payment_id`` not starting with ``{deal_id}_``: reported for a human
+      to check, blocks nothing; the pattern is inferred, not specified (O-05).
     """
     deals_path, approved_path = data_dir / DEALS_FILE, data_dir / APPROVED_FILE
 
@@ -124,7 +147,11 @@ def load_inputs(data_dir: Path = DATA_DIR) -> InputData:
     deals = [d for _, d in deal_rows if d.deal_id not in dup_deals]
 
     approved_rows, approved_issues = _read(approved_path, ApprovedPayment)
-    issues += approved_issues
+    issues += [
+        replace(i, message=f"{i.message} (deal unknown: every deal is blocked)", blocks_all=True)
+        if i.deal_id is None else i
+        for i in approved_issues
+    ]
     _, dup_issues = _duplicates(approved_path, approved_rows, "payment_id")
     issues += dup_issues
 
@@ -136,6 +163,12 @@ def load_inputs(data_dir: Path = DATA_DIR) -> InputData:
             issues.append(DataIssue(
                 approved_path.name, line, a.deal_id,
                 f"unknown deal_id {a.deal_id!r}", blocks_deal=False,
+            ))
+        elif not re.match(rf"{re.escape(a.deal_id)}_", a.payment_id):
+            issues.append(DataIssue(
+                approved_path.name, line, a.deal_id,
+                f"payment_id {a.payment_id!r} doesn't start with {a.deal_id + '_'!r}",
+                blocks_deal=False,
             ))
 
     approved = [a for _, a in approved_rows]

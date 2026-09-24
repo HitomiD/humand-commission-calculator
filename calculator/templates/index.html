@@ -12,7 +12,7 @@
   <table>
     <tr><th>File</th><th>Row</th><th>Deal</th><th>Problem</th><th>Blocks deal</th></tr>
     {% for i in data.issues %}
-    <tr><td>{{ i.file }}</td><td>{{ i.row }}</td><td>{{ i.deal_id or "—" }}</td><td>{{ i.message }}</td><td>{{ "yes" if i.blocks_deal else "no" }}</td></tr>
+    <tr><td>{{ i.file }}</td><td>{{ i.row }}</td><td>{{ i.deal_id or "—" }}</td><td>{{ i.message }}</td><td>{{ "all deals" if i.blocks_all else ("yes" if i.blocks_deal else "no") }}</td></tr>
     {% endfor %}
   </table>
 </section>
