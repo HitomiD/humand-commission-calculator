@@ -27,9 +27,12 @@
     header h1 { font-size: 1.25rem; margin: 0; }
     nav a { margin-right: 16px; color: var(--accent); text-decoration: none; }
     nav a[aria-current] { font-weight: 600; text-decoration: underline; }
-    form.run { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
-    button { font: inherit; padding: 6px 12px; border-radius: 6px; cursor: pointer;
-             border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+    form.run { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    form.run label { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+    button, input { font: inherit; padding: 6px 12px; border-radius: 6px;
+                    border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+    button { cursor: pointer; }
+    input[type=number] { width: 5.5em; padding-right: 4px; }
     button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
     section { background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
               padding: 12px 16px; margin: 16px 0; overflow-x: auto; }
@@ -58,17 +61,28 @@
   <header>
     <h1>Calculadora de comisiones</h1>
     {% set path = request.url.path %}
+    {# A temperature chosen in the form stays when moving between pages (D-48). #}
+    {% set q = "" if temperatura is none else "?temperatura=" ~ (temperatura | num) %}
     <nav>
-      <a href="/" {% if path == "/" %}aria-current="page"{% endif %}>Líneas</a>
-      <a href="/partners" {% if path == "/partners" %}aria-current="page"{% endif %}>Transferencias por partner</a>
-      <a href="/api/commissions">JSON</a>
+      <a href="/{{ q }}" {% if path == "/" %}aria-current="page"{% endif %}>Líneas</a>
+      <a href="/partners{{ q }}" {% if path == "/partners" %}aria-current="page"{% endif %}>Transferencias por partner</a>
+      <a href="/api/commissions{{ q }}">JSON</a>
     </nav>
-    {# "Recalcular" fetches the payments and has Gemini read every rule again (D-40). #}
+    {# "Recalcular" fetches the payments and has Gemini read every rule again (D-40),
+       at the temperature in the field; it starts at GEMINI_TEMPERATURE (D-48). #}
     <form class="run" method="get" action="{{ path }}">
+      <label title="Temperatura con la que Gemini lee las reglas, de 0 a 2. Por defecto, GEMINI_TEMPERATURE.">
+        Temperatura
+        <input type="number" name="temperatura" min="0" max="2" step="0.1" required
+               value="{{ temperatura_form | num }}">
+      </label>
       <button type="submit" class="primary" name="recalcular" value="1">Recalcular</button>
     </form>
   </header>
   <main>
+    {% if r.custom_data %}
+    <p class="note">Datos de entrada: <code>{{ r.data_dir }}</code> (configurado con <code>DATA_DIR</code>).</p>
+    {% endif %}
     {% if r.load_error %}
     <section class="problem">
       <h2>No se pudieron cargar los archivos de entrada</h2>

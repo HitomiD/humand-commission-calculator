@@ -12,7 +12,7 @@ from calculator.app import app
 from calculator.commission import months_already
 from calculator.data import DataIssue, load_inputs
 from calculator.models import Payment
-from calculator.payments import FetchError, FetchResult, FetchStats, PaymentError
+from calculator.payments import FetchError, FetchResult, FetchStats, PaymentError, fetch_payments
 from calculator.reference_rules import reference_rule
 from calculator.rules import RulesResult
 
@@ -31,14 +31,24 @@ def fake_fetch(monkeypatch):
     monkeypatch.setattr(calculator.pipeline, "fetch_payments", lambda: FETCHED)
 
 
+class _Calls(list):
+    """Each call's ``refresh``; ``temperatures`` has the temperature each one asked for."""
+
+    def __init__(self):
+        super().__init__()
+        self.temperatures: list[float | None] = []
+
+
 @pytest.fixture(autouse=True)
 def fake_rules(monkeypatch):
-    """Hand-written rules instead of Gemini; records each call's ``refresh``."""
-    calls = []
+    """Hand-written rules instead of Gemini; records each call."""
+    calls = _Calls()
 
-    def read(deals, *, refresh=False):
+    def read(deals, *, refresh=False, temperature=None):
         calls.append(refresh)
-        return RulesResult({d.deal_id: reference_rule(d) for d in deals}, "fake-model")
+        calls.temperatures.append(temperature)
+        return RulesResult({d.deal_id: reference_rule(d) for d in deals}, "fake-model",
+                           temperature=0.0 if temperature is None else temperature)
     monkeypatch.setattr(calculator.pipeline, "read_rules", read)
     return calls
 
@@ -91,7 +101,8 @@ def test_failed_fetch_is_shown_and_inputs_still_render(monkeypatch):
 
 
 def test_missing_payments_url_is_shown(monkeypatch):
-    monkeypatch.undo()  # use the real fetch_payments
+    # The real fetch_payments; undo() would also revert conftest's DATA_DIR cleanup.
+    monkeypatch.setattr(calculator.pipeline, "fetch_payments", fetch_payments)
     monkeypatch.delenv("PAYMENTS_API_URL", raising=False)
     text = client.get("/").text
     assert "No se pudieron obtener los pagos" in text and "PAYMENTS_API_URL is not set" in text
@@ -120,7 +131,7 @@ def test_buttons_recalculate_or_reread(fake_rules):
 
 
 def test_rules_error_is_shown(monkeypatch):
-    def read(deals, *, refresh=False):
+    def read(deals, *, refresh=False, temperature=None):
         return RulesResult({}, "fake-model", "GEMINI_API_KEY is not set")
     monkeypatch.setattr(calculator.pipeline, "read_rules", read)
     text = client.get("/").text
@@ -160,7 +171,7 @@ def test_rules_section_shows_every_step(monkeypatch, fake_rules):
 
 
 def test_missing_input_file_is_shown(monkeypatch, fake_rules):
-    def broken():
+    def broken(folder):
         raise calculator.pipeline.DataError("hubspot_deals.csv: file not found at /x")
     monkeypatch.setattr(calculator.pipeline, "load_inputs", broken)
     response = client.get("/")
@@ -180,3 +191,52 @@ def test_commissions_csv_matches_the_expected_output_format():
     assert rows[0] == expected[0]  # same columns, same order
     assert expected[1] in rows  # D01_p06, written exactly as the expected output writes it
     assert "D09,D09_x,,,,0,requiere_revision," in rows  # a line in review: blanks, amount 0
+
+
+def test_data_dir_setting_swaps_the_input_files(monkeypatch, tmp_path):
+    # A folder with only D01 and its history: the page must use it, and say so.
+    import shutil
+    from calculator.data import DATA_DIR
+    for name in ("hubspot_deals.csv", "pagos_aprobados.csv"):
+        rows = (DATA_DIR / name).read_text().splitlines()
+        (tmp_path / name).write_text("\n".join([rows[0]] + [r for r in rows[1:] if r.startswith("D01,")]) + "\n")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    text = client.get("/").text
+    assert "configurado con <code>DATA_DIR</code>" in text and str(tmp_path) in text
+    assert "Deals — hubspot_deals.csv (1)" in text
+    assert client.get("/api/commissions").json()["data_dir"] == str(tmp_path)
+
+
+def test_missing_data_dir_is_shown(monkeypatch, tmp_path):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "no_existe"))
+    text = client.get("/").text
+    assert "No se pudieron cargar los archivos de entrada" in text and "no_existe" in text
+
+
+def test_default_data_is_not_announced(monkeypatch):
+    monkeypatch.delenv("DATA_DIR", raising=False)
+    assert "configurado con" not in client.get("/").text
+
+
+def test_temperature_from_the_page(fake_rules, monkeypatch):
+    monkeypatch.delenv("GEMINI_TEMPERATURE", raising=False)
+    text = client.get("/").text
+    assert 'name="temperatura"' in text and 'value="0"' in text  # the setting's value
+    assert "Reglas leídas por fake-model a temperatura 0." in text
+    text = client.get("/?recalcular=1&temperatura=0.7").text
+    assert fake_rules.temperatures == [None, 0.7]
+    assert 'value="0.7"' in text and "a temperatura 0.7." in text
+    assert 'href="/partners?temperatura=0.7"' in text  # kept when changing pages
+    assert client.get("/api/data?temperatura=0.7").json()["rules_temperature"] == 0.7
+
+
+def test_form_starts_at_the_setting(monkeypatch):
+    monkeypatch.setenv("GEMINI_TEMPERATURE", "1.2")
+    assert 'value="1.2"' in client.get("/").text
+    assert 'href="/partners"' in client.get("/").text  # nothing chosen, nothing kept
+
+
+@pytest.mark.parametrize("value", ["-1", "2.1", "abc", ""])
+def test_invalid_temperature_in_the_url_is_rejected(fake_rules, value):
+    assert client.get(f"/?temperatura={value}").status_code == 422
+    assert fake_rules == []

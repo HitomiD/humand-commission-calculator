@@ -25,6 +25,8 @@ python -m tests.eval_rules --runs 3        # optional: real Gemini on 80 rule te
 | `GEMINI_API_KEY` | yes | The LLM key. Locally in `.env` (git-ignored); on Vercel in the project's environment variables |
 | `PAYMENTS_API_URL` | yes | Full payments endpoint, e.g. `http://localhost:4000/api/stripe/payments` |
 | `GEMINI_MODEL` | no | Defaults to `gemini-2.5-flash` |
+| `GEMINI_TEMPERATURE` | no | 0 to 2, defaults to 0. The "Temperatura" field next to "Recalcular" overrides it for that run |
+| `DATA_DIR` | no | A folder with your own `hubspot_deals.csv` and `pagos_aprobados.csv` (same columns as `data/`); defaults to `data/`. The page shows which folder it used. Payments still come from `PAYMENTS_API_URL`: to test your own, edit the `PAYMENTS` list in `mock-api/mock_stripe_endpoint.js` or point the URL to another endpoint |
 
 A missing setting doesn't crash the page: it says what's missing. Without the payments URL nothing is computed; without the Gemini key every line goes to review.
 
@@ -32,7 +34,7 @@ A missing setting doesn't crash the page: it says what's missing. Without the pa
 
 The LLM only turns text into a rule. Everything after that is plain, tested Python.
 
-1. **What the LLM sees:** only `partner_commission_pct` and `partner_commission_notes`, no amounts or names. It fills a JSON schema (structured output, temperature 0): tiers `{from_month, to_month | null, pct}`, `do_not_pay`, a partner `fee` (only when the text gives the total and how much to deduct per payment), the base the text mentions, and `flags`. One general rule: a datum the text doesn't give is left empty and explained in `flags`; the model never fills a gap. The prompt is in Spanish, like the texts, and teaches the conventions with invented examples ("año 1" = months 1–12, "perpetuo" = no end).
+1. **What the LLM sees:** only `partner_commission_pct` and `partner_commission_notes`, no amounts or names. It fills a JSON schema (structured output, temperature 0 by default): tiers `{from_month, to_month | null, pct}`, `do_not_pay`, a partner `fee` (only when the text gives the total and how much to deduct per payment), the base the text mentions, and `flags`. One general rule: a datum the text doesn't give is left empty and explained in `flags`; the model never fills a gap. The prompt is in Spanish, like the texts, and teaches the conventions with invented examples ("año 1" = months 1–12, "perpetuo" = no end).
 2. **Validation** turns that into a `CommissionRule`: percentages 0–100, tiers starting at month 1 with no gaps or overlaps, a fee the text mentions must be complete (checked in code, so an incomplete fee can't be dropped silently), and a base that agrees with the data. Each problem, and each model flag, becomes an issue; a rule with issues is never used.
 3. **The base is never taken from the LLM:** it comes from `commission_on_expansion` (`Yes`: the payment spread over its months; `No`: the contract amount). A base mentioned in the text is only a cross-check.
 4. **Calculation:** months already commissioned = sum of `meses_cubiertos`; a new payment covers the next N months (N from `payment_term`, dates ignored); months past the rule's end are cut; each month is priced at its own tier; the amount is rounded once, to cents. `estado` is `completo`, `incompleto`, `en_curso` (no end), `no_corresponde` or `requiere_revision`.

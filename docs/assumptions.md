@@ -26,7 +26,7 @@ The choices that affect the results, and why. Where the data settles a question,
 
 ## Reading the rule with the LLM
 
-- **Gemini only sees `partner_commission_pct` and `partner_commission_notes`**, with no amounts or names, and fills a fixed schema at temperature 0. Validation in code decides whether the rule can be used.
+- **Gemini only sees `partner_commission_pct` and `partner_commission_notes`**, with no amounts or names, and fills a fixed schema at temperature 0 (configurable, D-48). Validation in code decides whether the rule can be used.
 - **A datum the text doesn't give is never filled in.** The model leaves the field empty and explains in a flag; any flag or failed check sends the deal to review. There is no confidence score: a model's rating of its own certainty isn't reliable.
 - **The commission is counted in months, not payments**, and every tier needs a duration. "15% mensual" (no duration) and rules defined by payments go to review.
 - **Thresholds and several partners** are detected and sent to review, not calculated.

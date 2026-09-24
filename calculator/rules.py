@@ -7,8 +7,8 @@ rule's ``issues``, never an exception, and a rule with issues sends its
 deal's payments to review (D-35).
 
 ``read_rules`` asks Gemini to read every deal on each run, in parallel
-(D-37). A warm instance remembers the readings in memory, keyed by model and
-text; ``refresh=True`` ignores them and asks again. A deal whose text can't be
+(D-37). A warm instance remembers the readings in memory, keyed by model,
+temperature and text; ``refresh=True`` ignores them and asks again. A deal whose text can't be
 read gets a rule with an issue, and the run goes on.
 """
 
@@ -85,7 +85,7 @@ class ExtractionError(Exception):
     """Gemini answered, but not with a usable reading."""
 
 
-def extract(text: str, *, api_key: str, model: str) -> RuleExtraction:
+def extract(text: str, *, api_key: str, model: str, temperature: float) -> RuleExtraction:
     """Ask Gemini to read one rule text. Raises on any failure (D-36).
 
     Retries on rate limits and server errors are left to the SDK.
@@ -99,7 +99,7 @@ def extract(text: str, *, api_key: str, model: str) -> RuleExtraction:
         contents=text,
         config=types.GenerateContentConfig(
             system_instruction=INSTRUCTIONS,
-            temperature=0,
+            temperature=temperature,
             response_mime_type="application/json",
             response_schema=RuleExtraction,
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
@@ -185,14 +185,16 @@ class RulesResult:
     rules: dict[str, CommissionRule]  # by deal_id
     model: str  # which model read them (D-38)
     error: str | None = None  # a problem affecting every deal, shown once
+    temperature: float | None = None  # what they were read at; None when the setting is invalid (D-48)
     # What the model returned for each deal, before validation; None when it
     # couldn't be read. Kept so the page can show every step (D-41).
     readings: dict[str, RuleExtraction | None] = field(default_factory=dict)
 
 
-# (model, text) → reading, for as long as this instance lives (D-37). Only
-# good readings are kept, so a failed one is tried again on the next run.
-_readings: dict[tuple[str, str], RuleExtraction] = {}
+# (model, temperature, text) → reading, for as long as this instance lives
+# (D-37). Only good readings are kept, so a failed one is tried again on the
+# next run.
+_readings: dict[tuple[str, float, str], RuleExtraction] = {}
 
 
 def _unreadable(deal: Deal, why: str) -> CommissionRule:
@@ -200,23 +202,29 @@ def _unreadable(deal: Deal, why: str) -> CommissionRule:
                           issues=(why,), source_text=rule_text(deal))
 
 
-def read_rules(deals: Iterable[Deal], *, refresh: bool = False) -> RulesResult:
+def read_rules(deals: Iterable[Deal], *, refresh: bool = False,
+               temperature: float | None = None) -> RulesResult:
     """Every deal's rule, read by Gemini. Never raises: a deal that can't be
-    read gets a rule with an issue, so its payments go to review."""
+    read gets a rule with an issue, so its payments go to review.
+
+    ``temperature`` overrides ``GEMINI_TEMPERATURE`` for this run (D-48).
+    """
     deals = list(deals)
     model = config.gemini_model()
     try:
         api_key = config.gemini_api_key()
+        if temperature is None:
+            temperature = config.gemini_temperature()
     except config.ConfigError as e:
         return RulesResult({d.deal_id: _unreadable(d, f"no se pudo leer la regla: {e}") for d in deals},
-                           model, str(e))
+                           model, str(e), temperature)
 
     def read(deal: Deal) -> tuple[CommissionRule, RuleExtraction | None]:
         text = rule_text(deal)
-        key = (model, text)
+        key = (model, temperature, text)
         if refresh or key not in _readings:
             try:
-                _readings[key] = extract(text, api_key=api_key, model=model)
+                _readings[key] = extract(text, api_key=api_key, model=model, temperature=temperature)
             except Exception as e:  # noqa: BLE001 — one deal's failure must not stop the run
                 why = f"no se pudo leer la regla con {model}: {type(e).__name__}: {e}"
                 return _unreadable(deal, why), None
@@ -224,7 +232,7 @@ def read_rules(deals: Iterable[Deal], *, refresh: bool = False) -> RulesResult:
 
     with ThreadPoolExecutor(max_workers=8) as pool:
         results = list(pool.map(read, deals))
-    return RulesResult({rule.deal_id: rule for rule, _ in results}, model,
+    return RulesResult({rule.deal_id: rule for rule, _ in results}, model, temperature=temperature,
                        readings={rule.deal_id: reading for rule, reading in results})
 
 

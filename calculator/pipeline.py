@@ -12,8 +12,9 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from calculator.commission import build_lines, months_already, round_money
+from calculator import config
 from calculator.config import ConfigError
-from calculator.data import DataError, InputData, load_inputs
+from calculator.data import DATA_DIR, DataError, InputData, load_inputs
 from calculator.models import CommissionLine, PartnerTransfer
 from calculator.payments import FetchError, FetchResult, fetch_payments
 from calculator.rules import RulesResult, read_rules
@@ -21,6 +22,8 @@ from calculator.rules import RulesResult, read_rules
 
 @dataclass(frozen=True)
 class PipelineResult:
+    data_dir: str = str(DATA_DIR)  # the folder the CSVs were read from
+    custom_data: bool = False  # True when DATA_DIR points somewhere else (D-47)
     load_error: str | None = None  # a missing or unreadable CSV: nothing else runs
     data: InputData | None = None
     months_done: dict[str, int | None] | None = None
@@ -69,21 +72,24 @@ def group_transfers(lines: list[CommissionLine]) -> list[PartnerTransfer]:
     return transfers
 
 
-def run(*, refresh: bool = False) -> PipelineResult:
-    """Run every step. ``refresh`` makes Gemini read every rule again (D-40)."""
+def run(*, refresh: bool = False, temperature: float | None = None) -> PipelineResult:
+    """Run every step. ``refresh`` makes Gemini read every rule again (D-40);
+    ``temperature`` overrides the setting for this run (D-48)."""
+    folder = config.data_dir()
+    where = {"data_dir": str(folder or DATA_DIR), "custom_data": folder is not None}
     try:
-        data = load_inputs()
+        data = load_inputs(folder or DATA_DIR)
     except DataError as e:
-        return PipelineResult(load_error=str(e))
+        return PipelineResult(**where, load_error=str(e))
     months_done = months_already(data.approved, data.blocked_deals)
 
     try:
         fetched = fetch_payments()
     except (ConfigError, FetchError) as e:
-        return PipelineResult(data=data, months_done=months_done, fetch_error=str(e))
+        return PipelineResult(**where, data=data, months_done=months_done, fetch_error=str(e))
 
     # Gemini is only asked when there are lines to compute (D-37).
-    rules = read_rules(data.deals, refresh=refresh)
+    rules = read_rules(data.deals, refresh=refresh, temperature=temperature)
     lines = build_lines(data, fetched, lambda deal: rules.rules.get(deal.deal_id))
-    return PipelineResult(data=data, months_done=months_done, fetched=fetched, rules=rules,
+    return PipelineResult(**where, data=data, months_done=months_done, fetched=fetched, rules=rules,
                           lines=lines, transfers=group_transfers(lines))

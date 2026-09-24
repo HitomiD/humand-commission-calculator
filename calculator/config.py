@@ -7,6 +7,7 @@ the environment win over it, and on Vercel there is no file to load.
 """
 
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -40,3 +41,32 @@ def gemini_api_key() -> str:
 def gemini_model() -> str:
     """Gemini model id. Defaults to 2.5 Flash, the one checked with our key (D-33)."""
     return os.environ.get("GEMINI_MODEL", "").strip() or "gemini-2.5-flash"
+
+
+def data_dir() -> Path | None:
+    """Folder with the input CSVs (``hubspot_deals.csv`` and
+    ``pagos_aprobados.csv``), from ``DATA_DIR``; None means the repo's
+    ``data/``. A relative path is taken from the working directory, so
+    others can run the tool on their own data locally (D-47).
+    """
+    value = os.environ.get("DATA_DIR", "").strip()
+    return Path(value).expanduser().resolve() if value else None
+
+
+# Gemini accepts temperatures from 0 to 2.
+MAX_TEMPERATURE = 2.0
+
+
+def gemini_temperature() -> float:
+    """Temperature Gemini reads the rules at. Defaults to 0, the most likely
+    reading every time (D-48); the page can override it for one run."""
+    raw = os.environ.get("GEMINI_TEMPERATURE", "").strip()
+    if not raw:
+        return 0.0
+    try:
+        value = float(raw)
+    except ValueError:
+        raise ConfigError(f"GEMINI_TEMPERATURE is not a number: {raw!r}") from None
+    if not 0 <= value <= MAX_TEMPERATURE:  # also rejects nan
+        raise ConfigError(f"GEMINI_TEMPERATURE must be between 0 and {MAX_TEMPERATURE:g}, not {raw}")
+    return value

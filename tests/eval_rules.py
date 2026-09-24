@@ -4,6 +4,7 @@ Run on demand, not by pytest (it calls Gemini and needs GEMINI_API_KEY):
 
     python -m tests.eval_rules --runs 3              # real deals + invented cases
     python -m tests.eval_rules --set real --runs 1   # only the 8 deals in data/
+    GEMINI_TEMPERATURE=0.5 python -m tests.eval_rules  # at another temperature
 
 Two sets of cases:
 - real: the deals in ``data/``, which must read as ``reference_rule``;
@@ -134,19 +135,19 @@ def main() -> int:
     cases = (real_cases() if args.set in ("all", "real") else []) + \
             (invented_cases() if args.set in ("all", "invented") else [])
     results: dict[str, list[tuple[str, CommissionRule]]] = {c.id: [] for c in cases}
-    model = None
+    model = temperature = None
     for n in range(1, args.runs + 1):
         print(f"run {n}/{args.runs}: reading {len(cases)} texts...", flush=True)
         result = read_rules([c.deal for c in cases], refresh=True)
         if result.error:
             print(f"cannot read rules: {result.error}")
             return 2
-        model = result.model
+        model, temperature = result.model, result.temperature
         for c in cases:
             rule = result.rules[c.id]
             results[c.id].append((outcome(c.expected, rule), rule))
 
-    print(f"\n== {len(cases)} cases × {args.runs} run(s), {model} ==")
+    print(f"\n== {len(cases)} cases × {args.runs} run(s), {model}, temperature {temperature} ==")
     totals, by_kind, by_batch, unstable = Counter(), {}, {}, []
     for c in cases:
         runs = results[c.id]

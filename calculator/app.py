@@ -6,19 +6,21 @@ Uvicorn and on Vercel through ``api/index.py``.
 
 Every route runs the whole pipeline. ``recalcular=1`` (the "Recalcular"
 button) makes Gemini read every rule again; a plain page load reuses the
-readings this instance remembers (D-40).
+readings this instance remembers (D-40). ``temperatura`` overrides
+``GEMINI_TEMPERATURE`` for that request (D-48).
 """
 
 import csv
 import io
 from decimal import Decimal
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.templating import Jinja2Templates
 
-from calculator import pipeline
+from calculator import config, pipeline
 from calculator.rules import describe_rule
 
 # Resolved from this file, like DATA_DIR, so it works under Uvicorn and Vercel.
@@ -27,24 +29,41 @@ templates.env.filters["describe_rule"] = describe_rule
 # Money is always shown with its currency; the challenge states all amounts are USD.
 templates.env.filters["usd"] = lambda v: "" if v is None else f"USD {v}"
 templates.env.filters["as_json"] = lambda model: model.model_dump_json(indent=2)
+templates.env.filters["num"] = lambda x: f"{x:g}"  # 0.0 → 0, 0.5 → 0.5
 
 app = FastAPI(title="Commission calculator")
 
+# The temperature Gemini reads the rules at, for this request only (D-48).
+Temperatura = Annotated[float | None, Query(ge=0, le=config.MAX_TEMPERATURE)]
 
-def _page(request: Request, name: str, recalcular: bool) -> HTMLResponse:
-    return templates.TemplateResponse(request, name, {"r": pipeline.run(refresh=recalcular)})
+
+def _default_temperature() -> float:
+    """The setting, to fill the form; 0 when it's invalid (the page says so
+    once the rules are read)."""
+    try:
+        return config.gemini_temperature()
+    except config.ConfigError:
+        return 0.0
+
+
+def _page(request: Request, name: str, recalcular: bool, temperatura: float | None) -> HTMLResponse:
+    return templates.TemplateResponse(request, name, {
+        "r": pipeline.run(refresh=recalcular, temperature=temperatura),
+        "temperatura": temperatura,  # asked for in the URL: the links keep it
+        "temperatura_form": _default_temperature() if temperatura is None else temperatura,
+    })
 
 
 @app.get("/", response_class=HTMLResponse)
-def index(request: Request, recalcular: bool = False):
+def index(request: Request, recalcular: bool = False, temperatura: Temperatura = None):
     """Commission lines, the rules read, and the inputs they came from."""
-    return _page(request, "index.html", recalcular)
+    return _page(request, "index.html", recalcular, temperatura)
 
 
 @app.get("/partners", response_class=HTMLResponse)
-def partners(request: Request, recalcular: bool = False):
+def partners(request: Request, recalcular: bool = False, temperatura: Temperatura = None):
     """The same lines grouped into one transfer per partner (step 5 of the challenge)."""
-    return _page(request, "partners.html", recalcular)
+    return _page(request, "partners.html", recalcular, temperatura)
 
 
 def _rules_json(r: pipeline.PipelineResult) -> dict | None:
@@ -63,12 +82,14 @@ def _rules_json(r: pipeline.PipelineResult) -> dict | None:
 # The results as JSON, e.g. to compare with the expected output. On Vercel,
 # every /api/* path is rewritten to this app (see vercel.json).
 @app.get("/api/commissions")
-def commissions_json(recalcular: bool = False) -> dict:
-    r = pipeline.run(refresh=recalcular)
+def commissions_json(recalcular: bool = False, temperatura: Temperatura = None) -> dict:
+    r = pipeline.run(refresh=recalcular, temperature=temperatura)
     return {
+        "data_dir": r.data_dir,
         "load_error": r.load_error,
         "fetch_error": r.fetch_error,
         "rules_model": r.rules.model if r.rules else None,
+        "rules_temperature": r.rules.temperature if r.rules else None,
         "rules_error": r.rules.error if r.rules else None,
         "lines": r.lines,
         "transfers": r.transfers,
@@ -94,8 +115,8 @@ def _csv_value(value) -> str:
 # The lines in the exact format of the expected output, so they can be
 # compared with it cell by cell. Lines in review are included, with blanks.
 @app.get("/api/commissions.csv")
-def commissions_csv(recalcular: bool = False) -> PlainTextResponse:
-    r = pipeline.run(refresh=recalcular)
+def commissions_csv(recalcular: bool = False, temperatura: Temperatura = None) -> PlainTextResponse:
+    r = pipeline.run(refresh=recalcular, temperature=temperatura)
     out = io.StringIO()
     writer = csv.writer(out, lineterminator="\n")
     writer.writerow(EXPECTED_COLUMNS)
@@ -107,13 +128,15 @@ def commissions_csv(recalcular: bool = False) -> PlainTextResponse:
 
 # Everything the run used, inputs included, for debugging.
 @app.get("/api/data")
-def data_json(recalcular: bool = False) -> dict:
-    r = pipeline.run(refresh=recalcular)
+def data_json(recalcular: bool = False, temperatura: Temperatura = None) -> dict:
+    r = pipeline.run(refresh=recalcular, temperature=temperatura)
     d = r.data
     return {
+        "data_dir": r.data_dir,
         "load_error": r.load_error,
         "fetch_error": r.fetch_error,
         "rules_model": r.rules.model if r.rules else None,
+        "rules_temperature": r.rules.temperature if r.rules else None,
         "rules_error": r.rules.error if r.rules else None,
         "lines": r.lines,
         "rules": _rules_json(r),

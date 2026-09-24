@@ -141,7 +141,7 @@ def test_incomplete_fee_is_caught_by_code_and_explained_by_the_model(deals):
 # --- read_rules, with Gemini replaced by a fake ------------------------------
 
 class _Gemini(list):
-    """Calls made to the fake Gemini, as (text, model); ``fail_for`` holds texts that fail."""
+    """Calls made to the fake Gemini, as (text, model, temperature); ``fail_for`` holds texts that fail."""
 
     def __init__(self):
         super().__init__()
@@ -154,8 +154,8 @@ def gemini(monkeypatch, deals):
     by_text = {rule_text(d): PERFECT[d.deal_id] for d in deals.values()}
     calls = _Gemini()
 
-    def extract(text, *, api_key, model):
-        calls.append((text, model))
+    def extract(text, *, api_key, model, temperature):
+        calls.append((text, model, temperature))
         if text in calls.fail_for:
             raise RuntimeError("503 unavailable")
         return by_text[text]
@@ -163,12 +163,14 @@ def gemini(monkeypatch, deals):
     monkeypatch.setattr(calculator.rules, "_readings", {})
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    monkeypatch.delenv("GEMINI_TEMPERATURE", raising=False)
     return calls
 
 
 def test_read_rules_reads_every_deal(deals, gemini):
     result = read_rules(deals.values())
     assert result.model == "gemini-2.5-flash" and result.error is None
+    assert result.temperature == 0 and {t for _, _, t in gemini} == {0}
     assert result.rules == {k: reference_rule(d) for k, d in deals.items()}
     assert len(gemini) == 8
 
@@ -221,3 +223,28 @@ def test_describe_rule(deals):
     assert describe_rule(reference_rule(deals["D03"])) == "m1-m24: 35%; no pagar"
     with_fee = to_rule(_read(_YEAR_1_THEN_30, fee=_fee()), deals["D02"])
     assert describe_rule(with_fee) == "m1-m12: 50%, m13-sin fin: 30%; fee 1500 (fixed_per_payment 100)"
+
+
+def test_temperature_comes_from_the_setting_or_the_run(deals, gemini, monkeypatch):
+    monkeypatch.setenv("GEMINI_TEMPERATURE", "0.7")
+    assert read_rules(deals.values()).temperature == 0.7
+    result = read_rules(deals.values(), temperature=0.3)  # the page's choice wins
+    assert result.temperature == 0.3 and gemini[-1][2] == 0.3
+
+
+def test_another_temperature_reads_again(deals, gemini):
+    read_rules(deals.values())
+    read_rules(deals.values(), temperature=0.5)
+    assert len(gemini) == 16  # not the readings made at 0
+    read_rules(deals.values(), temperature=0.5)
+    read_rules(deals.values())
+    assert len(gemini) == 16  # each temperature remembers its own
+
+
+def test_invalid_temperature_sends_every_deal_to_review(deals, gemini, monkeypatch):
+    monkeypatch.setenv("GEMINI_TEMPERATURE", "caliente")
+    result = read_rules(deals.values())
+    assert result.error == "GEMINI_TEMPERATURE is not a number: 'caliente'"
+    assert result.temperature is None and all(r.issues for r in result.rules.values())
+    assert gemini == []
+    assert read_rules(deals.values(), temperature=0).error is None  # the page can still choose one
