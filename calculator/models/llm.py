@@ -35,7 +35,9 @@ class ExtractedFee(BaseModel):
 
 class RuleExtraction(BaseModel):
     tiers: list[ExtractedTier] = Field(
-        description="Tramos de comisión en orden, desde el mes 1, sin huecos ni superposiciones.")
+        description="Tramos de comisión en orden, desde el mes 1, sin huecos ni superposiciones. "
+                    "Vacío si el texto no dice el porcentaje o la duración de un tramo, o si la regla "
+                    "se define por pagos en vez de meses.")
     do_not_pay: bool = Field(description="True si el texto dice que esta comisión no se debe pagar.")
     menciona_fee: bool = Field(
         description="True si el texto menciona un partner fee, o cualquier monto que el partner deba y "

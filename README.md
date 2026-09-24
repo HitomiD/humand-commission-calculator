@@ -13,7 +13,7 @@ cp .env.example .env                       # then set GEMINI_API_KEY
 node mock-api/dev-server.cjs               # terminal 1: payments mock on :4000
 uvicorn api.index:app --reload --port 8000 # terminal 2: open http://localhost:8000
 pytest                                     # tests; no network, Gemini is faked
-python -m tests.eval_rules --runs 3        # optional: real Gemini on 58 rule texts vs their expected reading
+python -m tests.eval_rules --runs 3        # optional: real Gemini on 80 rule texts vs their expected reading
 ```
 
 ## Where to set the API key
@@ -40,7 +40,7 @@ The LLM only turns text into a rule. Everything after that is plain, tested Pyth
 
 Nothing is guessed silently and nothing is dropped: whatever can't be computed with certainty becomes a `requiere_revision` line with its reason and no amount, and the rest of the run goes on.
 
-- **LLM:** a failed call (after the SDK's retries), an invalid reply, a rule that fails validation, or a model flag sends that deal to review, with the model's own explanation when it gave one. The page shows, per deal, the text sent, the model's raw reply and the rule used. Evaluated on 58 texts (the 8 real deals plus 50 invented ones: other phrasings, typos, English, complete and incomplete fees, contradictions, thresholds), 3 runs: 56 right in every run, no reading changed between runs. The 2 misses are guesses instead of flags: "15% mensual" read as perpetual, and a commission on the first payment only read as month 1.
+- **LLM:** a failed call (after the SDK's retries), an invalid reply, a rule that fails validation, or a model flag sends that deal to review, with the model's own explanation when it gave one. The page shows, per deal, the text sent, the model's raw reply and the rule used. Evaluated on 80 texts (the 8 real deals plus 72 invented ones: other phrasings, typos, English, fees, conditions, missing durations, rules by payment, contradictions; 22 written after the last prompt change), 3 runs: 77 right in every run, and 1 always sent to review where it could have been paid (safe). The 2 misses are self-contradictory texts that the model sometimes resolved instead of flagging. Readings only varied between runs on those ambiguous texts.
 - **CSV:** a malformed or duplicated row blocks only its deal; a missing file or column is shown as an error.
 - **Payments:** an invalid payment (unknown term, other currency…) becomes a review line; the rest are used.
 - **Other cases sent to review, not guessed:** a payment below the contract amount; a partner fee mentioned without its total or its deduction per payment; a fee still owed when the rule ends; later payments of a deal already in review. "NO PAGAR" records the months but pays 0.

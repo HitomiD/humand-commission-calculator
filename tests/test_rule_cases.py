@@ -14,13 +14,14 @@ from tests.eval_rules import CASES_FILE, expected_rule, invented_cases, meaning,
 
 RAW = json.loads(CASES_FILE.read_text())
 KINDS = {"plano", "tramos", "perpetuo", "otro_idioma", "typo", "no_pagar", "base",
-         "fee_completo", "fee_incompleto", "ambiguo"}
+         "fee_completo", "fee_incompleto", "ambiguo", "por_pagos", "sin_duracion",
+         "condicional", "contradiccion"}
 
 
 def test_ids_are_unique_and_every_case_is_explained():
     assert len({c["id"] for c in RAW}) == len(RAW)
     for c in RAW:
-        assert c["kind"] in KINDS and c["why"], c["id"]
+        assert c["kind"] in KINDS and c["why"] and c.get("batch", 1) in (1, 2), c["id"]
 
 
 @pytest.mark.parametrize("case", invented_cases(), ids=lambda c: c.id)

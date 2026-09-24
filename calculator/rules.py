@@ -40,9 +40,15 @@ que impide calcular: datos que faltan, ambigüedades, contradicciones o reglas
 que el esquema no puede expresar (por ejemplo un umbral, o varios partners).
 
 Meses:
+- La comisión se cuenta por meses, no por pagos: un solo pago del cliente
+  puede cubrir varios meses (mensual, trimestral, anual). Si la regla se
+  define por pagos en vez de meses, no la conviertas a meses: tiers vacío y un flag.
 - Se cuentan desde 1, el primer mes comisionado.
 - "año 1" / "1er año" / "primer año" son los meses 1-12; "año 2" son 13-24, y así.
-- "perpetuo", "de por vida", "en adelante": el último tramo no tiene fin (to_month null).
+- Cada tramo necesita una duración: una cantidad de meses o años, un mes final,
+  o palabras que digan que no tiene fin ("perpetuo", "de por vida", "en
+  adelante": to_month null). Si el texto no dice la duración, no la supongas:
+  tiers vacío y un flag.
 - Un solo porcentaje por "N meses" es un tramo de 1 a N.
 - No agregues tramos que el texto no dice.
 

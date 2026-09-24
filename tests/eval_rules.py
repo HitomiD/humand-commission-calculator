@@ -9,8 +9,9 @@ Two sets of cases:
 - real: the deals in ``data/``, which must read as ``reference_rule``;
 - invented: ``tests/fixtures/rule_cases.json``, texts written to test other
   phrasings, typos, fees and cases that must go to review. None of them is
-  one of the prompt's examples (``tests/test_rule_cases.py`` checks it), so
-  the prompt isn't tuned against the answers.
+  one of the prompt's examples (``tests/test_rule_cases.py`` checks it).
+  Batch 2 was written after the last prompt change, so it measures the
+  prompt on texts it wasn't adjusted to; results are also shown per batch.
 
 Every run asks Gemini again. Each reading is:
 - ok: the expected rule, or sent to review when review is expected;
@@ -41,6 +42,7 @@ REVIEW = "revisión"
 class Case:
     id: str
     kind: str
+    batch: str  # "real", "1" or "2"
     deal: Deal
     expected: tuple | None  # meaning(), or None when the rule must go to review
     why: str
@@ -95,7 +97,7 @@ def invented_cases() -> list[Case]:
                     commission_on_expansion=c.get("commission_on_expansion", False),
                     amount_by_contract=Decimal(100))
         expected = None if c["expected"] == "revision" else meaning(expected_rule(c["expected"], deal))
-        cases.append(Case(c["id"], c["kind"], deal, expected, c["why"]))
+        cases.append(Case(c["id"], c["kind"], str(c.get("batch", 1)), deal, expected, c["why"]))
     return cases
 
 
@@ -105,7 +107,7 @@ def real_cases() -> list[Case]:
         ref = reference_rule(deal)
         expected = None if ref.issues else meaning(ref)
         why = "; ".join(ref.issues) if ref.issues else "reference rule"
-        cases.append(Case(deal.deal_id, "real", deal, expected, why))
+        cases.append(Case(deal.deal_id, "real", "real", deal, expected, why))
     return cases
 
 
@@ -145,12 +147,13 @@ def main() -> int:
             results[c.id].append((outcome(c.expected, rule), rule))
 
     print(f"\n== {len(cases)} cases × {args.runs} run(s), {model} ==")
-    totals, by_kind, unstable = Counter(), {}, []
+    totals, by_kind, by_batch, unstable = Counter(), {}, {}, []
     for c in cases:
         runs = results[c.id]
         outcomes = [o for o, _ in runs]
         totals.update(outcomes)
         by_kind.setdefault(c.kind, Counter()).update(outcomes)
+        by_batch.setdefault(c.batch, Counter()).update(outcomes)
         signatures = {(o, REVIEW if r.issues else meaning(r)) for o, r in runs}
         stable = len(signatures) == 1
         if not stable:
@@ -166,9 +169,15 @@ def main() -> int:
                 for issue in r.issues:
                     print(f"           · {issue}")
 
+    def line(counts):
+        return "  ".join(f"{k} {counts[k]}" for k in ("ok", "flagged", "WRONG") if counts[k])
+
     print("\n== By kind (readings) ==")
     for kind, counts in by_kind.items():
-        print(f"{kind:15} " + "  ".join(f"{k} {counts[k]}" for k in ("ok", "flagged", "WRONG") if counts[k]))
+        print(f"{kind:15} {line(counts)}")
+    print("\n== By batch (readings) ==")
+    for batch, counts in by_batch.items():
+        print(f"{batch:15} {line(counts)}")
     total = sum(totals.values())
     print(f"\nreadings: {total} · ok {totals['ok']} · flagged {totals['flagged']} · WRONG {totals['WRONG']}"
           f" · unstable cases {len(unstable)}")
