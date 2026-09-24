@@ -1,0 +1,9 @@
+deal_id,nombre_negocio,partner,type_of_partner,type_of_partner_for_this_deal,partner_commission_pct,partner_commission_notes,commission_on_expansion,amount_by_contract,estado_pago_comision,date_of_first_payment
+D01,Cliente Andes,Partner Sur,Referral Partner,Referral Joint Sale,25% - 12 meses,,No,252.0,,2026-07-29
+D02,Cliente Boreal,Partner Norte,Business Partner,Business Partner,50% año 1 / 30% perpetuo,,Yes,2100.0,,2026-08-04
+D03,Cliente Cierzo,Partner Este,Referral Partner,Referral Partner,Actualizar Excel pero NO PAGAR - 35% - 24 meses Sobre TOTALIDAD,Actualizar Excel pero NO PAGAR,Yes,420.0,Se está pagando en etapas,2025-01-09
+D04,Cliente Delta,Partner Oeste,Referral Partner,Business Partner,Business Partner - Ellos deben el partner fee de 1.500usd. Hay que ir descontando de los pagos de las comisiones hasta cubrir ese monto. Tienen un Revenue share de 50% año 1 y 30% año 2 en adelante. Sobre la TOTALIDAD de la facturación por ser Business Partners.,,Yes,600.0,No se pagó aún,2024-07-17
+D05,Cliente Eolo,Partner Norte,Business Partner,Business Partner,Business Partner: 50% año 1 - 30% año 2 en adelante (incluye revenue exp),,Yes,700.0,,2025-01-30
+D06,Cliente Fohn,Partner Sur,Referral Partner,Referral Partner,50% - 1er año,,No,561.0,,2026-03-02
+D07,Cliente Gregal,Partner Centro,Referral Partner,Referral Partner,50% 1er año,,No,1000.0,,2026-03-09
+D08,Cliente Harmatan,Partner Centro,Referral Partner,Referral Partner,50% año 1,,No,1350.0,Se pago la totalidad de la comisión,2025-06-26

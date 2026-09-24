@@ -1,0 +1,14 @@
+# Python 
+.venv/
+__pycache__/
+*.py[cod]
+
+# Local environment configuration
+.env
+
+# Common agent folders
+.codex
+.claude
+
+# Local development notes and documentation
+docs/.notes
