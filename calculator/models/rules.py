@@ -34,15 +34,15 @@ def tier_issues(tiers: tuple[Tier, ...]) -> list[str]:
     only the last one may be open-ended.
     """
     if not tiers:
-        return ["no tiers"]
+        return ["sin tramos"]
     issues = []
     if tiers[0].from_month != 1:
-        issues.append(f"first tier starts at m{tiers[0].from_month}, not m1")
+        issues.append(f"el primer tramo empieza en m{tiers[0].from_month}, no en m1")
     for prev, cur in zip(tiers, tiers[1:]):
         if prev.to_month is None:
-            issues.append(f"open-ended tier from m{prev.from_month} is not the last one")
+            issues.append(f"el tramo sin fin desde m{prev.from_month} no es el último")
         elif cur.from_month != prev.to_month + 1:
-            issues.append(f"tier ending m{prev.to_month} is followed by one starting m{cur.from_month}")
+            issues.append(f"al tramo que termina en m{prev.to_month} le sigue uno que empieza en m{cur.from_month}")
     return issues
 
 

@@ -129,35 +129,35 @@ def compute_line(
     # error in the payment, whatever the base (D-08).
     if payment.amount / covered < deal.amount_by_contract:
         return CommissionLine(**common, estado="requiere_revision", trace=trace(),
-                              reason=(f"payment of {payment.amount} for {covered} month(s) is below "
-                                      f"the contract amount of {deal.amount_by_contract}/month"))
+                              reason=(f"el pago de {payment.amount} por {covered} mes(es) es menor "
+                                      f"al monto de contrato de {deal.amount_by_contract}/mes"))
 
     if months is None:
         return CommissionLine(**common, estado="no_corresponde", trace=trace(),
-                              reason=f"all {rule.max_months} months were already commissioned")
+                              reason=f"ya se comisionaron los {rule.max_months} meses")
     start, end = months
     flags = []
     if end < already + covered:
-        flags.append(f"payment covers m{already + 1}-m{already + covered}; cut at m{rule.max_months} (D-09)")
+        flags.append(f"el pago cubre m{already + 1}-m{already + covered}; se corta en m{rule.max_months} (D-09)")
     slices = tier_breakdown(start, end, rule.tiers, base)
     common["meses_elegibles"] = f"m{start}-m{end}"
 
     if rule.do_not_pay:
         # The months are used up (the notes say to update the sheet) but nothing is paid (D-29).
         return CommissionLine(**common, estado="no_corresponde", trace=trace(slices, flags),
-                              reason="the deal's notes say not to pay")
+                              reason="las notas del deal dicen que no se pague")
 
     gross = sum((s.amount for s in slices), Decimal(0))
     fee_fields = {}
     if rule.fee is not None:
         if rule.fee.mode == "unspecified":
             return CommissionLine(**common, estado="requiere_revision", trace=trace(slices, flags),
-                                  reason=(f"partner fee of {rule.fee.total} to deduct, but the rule "
-                                          "doesn't say how much per payment (D-13)"))
+                                  reason=(f"hay un partner fee de {rule.fee.total} a descontar, pero la regla "
+                                          "no dice cuánto por pago (D-13)"))
         if fee_balance is None:
             return CommissionLine(**common, estado="requiere_revision", trace=trace(slices, flags),
-                                  reason=("partner fee balance unknown: the deal has approved payments "
-                                          "and nothing records how much fee they deducted (D-13)"))
+                                  reason=("saldo del partner fee desconocido: el deal tiene pagos aprobados "
+                                          "y no hay registro de cuánto fee se descontó en ellos (D-13)"))
         deducted = fee_deduction(rule.fee, gross, fee_balance)
         fee_fields = {"gross_amount": gross, "fee_deducted": deducted,
                       "fee_balance_after": fee_balance - deducted}
@@ -169,9 +169,9 @@ def compute_line(
         # deduct it from. Collecting it is a business decision (D-13).
         return CommissionLine(**common, estado="requiere_revision",
                               trace=trace(slices, flags, **fee_fields),
-                              reason=(f"the rule ends at m{end} with "
-                                      f"{round_money(fee_fields['fee_balance_after'])} of the partner fee "
-                                      "still owed and no later commission to deduct it from (D-13)"))
+                              reason=(f"la regla termina en m{end} con "
+                                      f"{round_money(fee_fields['fee_balance_after'])} del partner fee "
+                                      "todavía adeudado y sin comisiones posteriores de las que descontarlo (D-13)"))
 
     return CommissionLine(
         **common,
@@ -207,7 +207,7 @@ def build_lines(
         return CommissionLine(deal_id=deal_id, payment_id=payment_id, estado="requiere_revision",
                               reason=reason, partner=partner)
 
-    lines = [review(e.deal_id, e.payment_id, f"payment can't be used: {e.message}")
+    lines = [review(e.deal_id, e.payment_id, f"el pago no se puede usar: {e.message}")
              for e in fetched.errors]
 
     for p in fetched.payments:
@@ -215,19 +215,19 @@ def build_lines(
             continue
         deal = deals.get(p.deal_id)
         if p.deal_id in blocked:
-            lines.append(review(p.deal_id, p.payment_id, "the deal has data issues (see above)",
+            lines.append(review(p.deal_id, p.payment_id, "el deal tiene problemas en los datos (ver arriba)",
                                 deal.partner if deal else None))
             continue
         if deal is None:
-            lines.append(review(p.deal_id, p.payment_id, "deal not found in hubspot_deals.csv"))
+            lines.append(review(p.deal_id, p.payment_id, "deal no encontrado en hubspot_deals.csv"))
             continue
         if p.deal_id in held:
             lines.append(review(p.deal_id, p.payment_id, held[p.deal_id], deal.partner))
             continue
         rule = rule_for(deal)
         if rule is None or rule.issues:
-            why = "; ".join(rule.issues) if rule else "no commission rule for this deal"
-            lines.append(review(p.deal_id, p.payment_id, f"rule can't be used: {why}", deal.partner))
+            why = "; ".join(rule.issues) if rule else "no hay regla de comisión para este deal"
+            lines.append(review(p.deal_id, p.payment_id, f"la regla no se puede usar: {why}", deal.partner))
             continue
 
         already = running.get(p.deal_id, 0)
@@ -241,7 +241,7 @@ def build_lines(
             fee_owed[p.deal_id] = line.trace.fee_balance_after
         if line.estado == "requiere_revision":
             # This payment's months are undecided, so any later one would be a guess.
-            held[p.deal_id] = f"an earlier payment ({p.payment_id}) of this deal needs review"
+            held[p.deal_id] = f"un pago anterior ({p.payment_id}) de este deal requiere revisión"
         elif months := eligible_range(already, p.payment_term.months, rule.max_months):
             running[p.deal_id] = months[1]
     return lines

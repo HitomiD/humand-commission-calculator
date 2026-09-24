@@ -65,7 +65,7 @@ def test_one_line_per_new_payment(lines):
 def test_fee_without_a_stated_mechanism_goes_to_review(lines):
     line = lines["D04_p01"]
     assert line.estado == "requiere_revision"
-    assert "doesn't say how much per payment" in line.reason
+    assert "no dice cuánto por pago" in line.reason
     assert line.monto_a_comisionar == 0
 
 
@@ -103,7 +103,7 @@ def test_estado():
 
 def test_tier_issues():
     assert tier_issues((Tier(from_month=1, to_month=12, pct=50), Tier(from_month=13, pct=30))) == []
-    assert tier_issues(()) == ["no tiers"]
+    assert tier_issues(()) == ["sin tramos"]
     assert tier_issues((Tier(from_month=2, to_month=12, pct=50),)) != []
     assert tier_issues((Tier(from_month=1, to_month=12, pct=50), Tier(from_month=14, pct=30))) != []
     assert tier_issues((Tier(from_month=1, pct=50), Tier(from_month=13, pct=30))) != []
@@ -132,8 +132,8 @@ def test_blocked_unknown_and_broken_payments_go_to_review():
     )
     got = {l.payment_id: l for l in build_lines(inputs, fetched, reference_rule)}
     assert {l.estado for l in got.values()} == {"requiere_revision"}
-    assert "data issues" in got["D01_p06"].reason
-    assert "not found" in got["D99_p01"].reason
+    assert "problemas en los datos" in got["D01_p06"].reason
+    assert "no encontrado" in got["D99_p01"].reason
     assert "bad term" in got["D02_x"].reason
 
 
@@ -168,7 +168,7 @@ def test_payment_below_the_contract_goes_to_review(deal, amount):
     term = "mensual" if deal == "D01" else "anual"
     fetched = FetchResult([_payment(f"{deal}_new", deal, term, amount)])
     [line] = build_lines(load_inputs(), fetched, reference_rule)
-    assert line.estado == "requiere_revision" and "below the contract amount" in line.reason
+    assert line.estado == "requiere_revision" and "menor al monto de contrato" in line.reason
     assert line.monto_a_comisionar == 0
 
 
@@ -216,7 +216,7 @@ def test_fee_on_a_deal_with_history_goes_to_review():
     fee = FeeDeduction(total=100, mode="as_much_as_possible")
     fetched = FetchResult([_payment("D01_p06")])
     [line] = build_lines(load_inputs(), fetched, _with_fee(fee))
-    assert line.estado == "requiere_revision" and "balance unknown" in line.reason
+    assert line.estado == "requiere_revision" and "saldo del partner fee desconocido" in line.reason
 
 
 def test_fee_mode_and_value_must_agree():
@@ -233,7 +233,7 @@ def test_rule_ending_with_fee_still_owed_goes_to_review():
     fee = FeeDeduction(total=1500, mode="fixed_per_payment", value=500)
     fetched = FetchResult([_payment("D07_p01", "D07", "anual", 12000)])
     [line] = build_lines(load_inputs(), fetched, _with_fee(fee))
-    assert line.estado == "requiere_revision" and "still owed" in line.reason
+    assert line.estado == "requiere_revision" and "todavía adeudado" in line.reason
     assert line.monto_a_comisionar == 0
     assert (line.trace.gross_amount, line.trace.fee_deducted, line.trace.fee_balance_after) == (6000, 500, 1000)
 
