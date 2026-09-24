@@ -138,7 +138,7 @@ def compute_line(
     start, end = months
     flags = []
     if end < already + covered:
-        flags.append(f"el pago cubre m{already + 1}-m{already + covered}; se corta en m{rule.max_months} (D-09)")
+        flags.append(f"el pago cubre m{already + 1}-m{already + covered}; se corta en m{rule.max_months}")
     slices = tier_breakdown(start, end, rule.tiers, base)
     common["meses_elegibles"] = f"m{start}-m{end}"
 
@@ -153,11 +153,11 @@ def compute_line(
         if rule.fee.mode == "unspecified":
             return CommissionLine(**common, estado="requiere_revision", trace=trace(slices, flags),
                                   reason=(f"hay un partner fee de {rule.fee.total} a descontar, pero la regla "
-                                          "no dice cuánto por pago (D-13)"))
+                                          "no dice cuánto por pago"))
         if fee_balance is None:
             return CommissionLine(**common, estado="requiere_revision", trace=trace(slices, flags),
                                   reason=("saldo del partner fee desconocido: el deal tiene pagos aprobados "
-                                          "y no hay registro de cuánto fee se descontó en ellos (D-13)"))
+                                          "y no hay registro de cuánto fee se descontó en ellos"))
         deducted = fee_deduction(rule.fee, gross, fee_balance)
         fee_fields = {"gross_amount": gross, "fee_deducted": deducted,
                       "fee_balance_after": fee_balance - deducted}
@@ -171,7 +171,7 @@ def compute_line(
                               trace=trace(slices, flags, **fee_fields),
                               reason=(f"la regla termina en m{end} con "
                                       f"{round_money(fee_fields['fee_balance_after'])} del partner fee "
-                                      "todavía adeudado y sin comisiones posteriores de las que descontarlo (D-13)"))
+                                      "todavía adeudado y sin comisiones posteriores de las que descontarlo"))
 
     return CommissionLine(
         **common,
