@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{# One transfer per partner, with a combined memo (D-42). Lines in review are
+   listed with their partner but not paid. #}
+
+{% block title %}Transfers by partner · Commission calculator{% endblock %}
+
+{% block content %}
+{% if r.transfers is not none %}
+<section>
+  <h2>Transfers by partner ({{ r.transfers | length }})</h2>
+  <p class="note">Each partner gets one transfer for all their commissions in this run. The combined memo lists every line's memo; lines in review are shown but not paid until a person decides.</p>
+</section>
+
+{% for t in r.transfers %}
+<section>
+  <h2>{{ t.partner }} · {{ t.total }}</h2>
+  {% if t.memo %}
+  <p class="note">Memo de la transferencia:</p>
+  <pre>{{ t.memo }}</pre>
+  <table>
+    <tr><th>Deal</th><th>Payment</th><th>Meses</th><th>Estado</th><th>Monto</th><th>Memo</th></tr>
+    {% for l in t.lines %}
+    <tr>
+      <td>{{ l.deal_id }}</td><td>{{ l.payment_id }}</td><td>{{ l.meses_elegibles }}</td>
+      <td><span class="badge {{ l.estado }}">{{ l.estado }}</span></td>
+      <td class="num">{{ l.monto_a_comisionar }}</td><td>{{ l.memo }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>Nothing to pay in this run.</p>
+  {% endif %}
+  {% if t.pending %}
+  <p class="note">Pendiente de revisión (no incluido en la transferencia):</p>
+  <table>
+    <tr><th>Deal</th><th>Payment</th><th>Motivo</th></tr>
+    {% for l in t.pending %}
+    <tr><td>{{ l.deal_id }}</td><td>{{ l.payment_id }}</td><td>{{ l.reason }}</td></tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</section>
+{% endfor %}
+{% endif %}
+{% endblock %}

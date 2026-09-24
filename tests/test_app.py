@@ -7,8 +7,9 @@ hand-written rules, so neither the mock server nor Gemini is needed.
 import pytest
 from fastapi.testclient import TestClient
 
-import calculator.app
-from calculator.app import _months_done, app
+import calculator.pipeline
+from calculator.app import app
+from calculator.commission import months_already
 from calculator.data import DataIssue, load_inputs
 from calculator.models import Payment
 from calculator.payments import FetchError, FetchResult, FetchStats, PaymentError
@@ -27,7 +28,7 @@ FETCHED = FetchResult(
 
 @pytest.fixture(autouse=True)
 def fake_fetch(monkeypatch):
-    monkeypatch.setattr(calculator.app, "fetch_payments", lambda: FETCHED)
+    monkeypatch.setattr(calculator.pipeline, "fetch_payments", lambda: FETCHED)
 
 
 @pytest.fixture(autouse=True)
@@ -38,7 +39,7 @@ def fake_rules(monkeypatch):
     def read(deals, *, refresh=False):
         calls.append(refresh)
         return RulesResult({d.deal_id: reference_rule(d) for d in deals}, "fake-model")
-    monkeypatch.setattr(calculator.app, "read_rules", read)
+    monkeypatch.setattr(calculator.pipeline, "read_rules", read)
     return calls
 
 
@@ -65,7 +66,7 @@ def test_months_done_skips_blocked_deals():
     # A duplicated payment_id must not double the months; the deal is blocked.
     data.approved.append(first)
     data.issues.append(DataIssue("pagos_aprobados.csv", 99, first.deal_id, "duplicate"))
-    months = _months_done(data)
+    months = months_already(data.approved, data.blocked_deals)
     assert months[first.deal_id] is None
     assert all(v is not None for k, v in months.items() if k != first.deal_id)
 
@@ -80,7 +81,7 @@ def test_index_shows_fetched_payments_and_errors():
 def test_failed_fetch_is_shown_and_inputs_still_render(monkeypatch):
     def fail():
         raise FetchError("gave up after 8 attempts")
-    monkeypatch.setattr(calculator.app, "fetch_payments", fail)
+    monkeypatch.setattr(calculator.pipeline, "fetch_payments", fail)
     response = client.get("/")
     assert response.status_code == 200
     assert "Payments could not be fetched" in response.text
@@ -121,7 +122,7 @@ def test_buttons_recalculate_or_reread(fake_rules):
 def test_rules_error_is_shown(monkeypatch):
     def read(deals, *, refresh=False):
         return RulesResult({}, "fake-model", "GEMINI_API_KEY is not set")
-    monkeypatch.setattr(calculator.app, "read_rules", read)
+    monkeypatch.setattr(calculator.pipeline, "read_rules", read)
     text = client.get("/").text
     assert "Rules could not be read" in text and "GEMINI_API_KEY is not set" in text
     assert client.get("/api/data").json()["rules_error"] == "GEMINI_API_KEY is not set"
@@ -130,6 +131,41 @@ def test_rules_error_is_shown(monkeypatch):
 def test_no_rules_read_when_the_fetch_fails(monkeypatch, fake_rules):
     def fail():
         raise FetchError("down")
-    monkeypatch.setattr(calculator.app, "fetch_payments", fail)
+    monkeypatch.setattr(calculator.pipeline, "fetch_payments", fail)
     client.get("/")
+    assert fake_rules == []
+
+
+def test_partners_page_groups_lines_into_transfers():
+    response = client.get("/partners")
+    assert response.status_code == 200
+    assert "Partner Sur · 63.00" in response.text
+    assert "Partner Sur - 1 comision - total 63.00: Cliente Andes - comision pago m6-m6 - restan 6" in response.text
+
+
+def test_commissions_json():
+    body = client.get("/api/commissions").json()
+    assert body["rules_model"] == "fake-model" and body["fetch_error"] is None
+    assert [t["partner"] for t in body["transfers"]] == ["Partner Sur"]
+    d01 = body["rules"]["D01"]
+    assert d01["source_text"].startswith("partner_commission_pct: 25% - 12 meses")
+    assert d01["rule"]["tiers"][0]["pct"] == "25"
+
+
+def test_rules_section_shows_every_step(monkeypatch, fake_rules):
+    text = client.get("/").text
+    assert "Reglas leídas (8)" in text
+    assert 'id="regla-D04"' in text and "fee 1500 (unspecified)" in text
+    assert '<a href="#regla-D01">D01</a>' in text  # a line links to its rule
+
+
+def test_missing_input_file_is_shown(monkeypatch, fake_rules):
+    def broken():
+        raise calculator.pipeline.DataError("hubspot_deals.csv: file not found at /x")
+    monkeypatch.setattr(calculator.pipeline, "load_inputs", broken)
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "Input files could not be loaded" in response.text and "file not found" in response.text
+    assert client.get("/partners").status_code == 200
+    assert client.get("/api/commissions").json()["load_error"].startswith("hubspot_deals.csv")
     assert fake_rules == []

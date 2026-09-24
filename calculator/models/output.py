@@ -58,3 +58,19 @@ class CommissionLine(BaseModel):
     partner: str | None = None
     reason: str | None = None  # why a line is no_corresponde or requiere_revision
     trace: Trace | None = None
+
+
+class PartnerTransfer(BaseModel):
+    """One partner's commissions for the run, as a single transfer (step 7).
+
+    Only lines with a memo are paid; the partner's lines in review are listed
+    beside the transfer so they aren't forgotten, but not paid.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    partner: str
+    lines: tuple[CommissionLine, ...]  # paid in this transfer
+    total: Decimal
+    memo: str | None  # combined memo (D-42); None when nothing is paid
+    pending: tuple[CommissionLine, ...] = ()  # requiere_revision, not paid

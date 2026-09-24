@@ -192,3 +192,17 @@ def test_missing_key_sends_every_deal_to_review(deals, gemini, monkeypatch):
     assert result.error == "GEMINI_API_KEY is not set"
     assert all(r.issues for r in result.rules.values())
     assert gemini == []
+
+
+def test_readings_are_kept_for_the_page(deals, gemini):
+    gemini.fail_for.add(rule_text(deals["D02"]))
+    result = read_rules(deals.values())
+    assert result.readings["D01"] == PERFECT["D01"]
+    assert result.readings["D02"] is None  # not read: there is nothing to show
+
+
+def test_describe_rule(deals):
+    from calculator.rules import describe_rule
+    assert describe_rule(reference_rule(deals["D02"])) == "m1-m12: 50%, m13-sin fin: 30%"
+    assert describe_rule(reference_rule(deals["D03"])) == "m1-m24: 35%; no pagar"
+    assert describe_rule(reference_rule(deals["D04"])) == "m1-m12: 50%, m13-sin fin: 30%; fee 1500 (unspecified)"

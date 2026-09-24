@@ -1,14 +1,97 @@
 <!doctype html>
-{# Shared layout. Pages fill the "content" block. Kept unstyled on purpose
-   until the calculation works (decision D-23). #}
+{# Shared layout: navigation, the two run buttons (D-40) and the problems
+   that stop part of the run, which always come first (D-22, D-26). #}
 <html lang="es">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Commission calculator{% endblock %}</title>
+  <style>
+    :root {
+      --bg: #fafaf9; --surface: #ffffff; --text: #1c1917; --muted: #57534e; --border: #e7e5e4;
+      --accent: #1d4ed8; --ok-bg: #dcfce7; --ok: #166534; --run-bg: #dbeafe; --run: #1e40af;
+      --warn-bg: #fef3c7; --warn: #92400e; --off-bg: #f5f5f4; --off: #57534e; --err-bg: #fee2e2; --err: #991b1b;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1c1917; --surface: #292524; --text: #f5f5f4; --muted: #a8a29e; --border: #44403c;
+        --accent: #93c5fd; --ok-bg: #14532d; --ok: #bbf7d0; --run-bg: #1e3a8a; --run: #bfdbfe;
+        --warn-bg: #78350f; --warn: #fde68a; --off-bg: #44403c; --off: #d6d3d1; --err-bg: #7f1d1d; --err: #fecaca;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text);
+           font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    header, main { max-width: 1400px; margin: 0 auto; padding: 0 16px; }
+    header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; padding-top: 16px; }
+    header h1 { font-size: 1.25rem; margin: 0; }
+    nav a { margin-right: 16px; color: var(--accent); text-decoration: none; }
+    nav a[aria-current] { font-weight: 600; text-decoration: underline; }
+    form.run { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+    button { font: inherit; padding: 6px 12px; border-radius: 6px; cursor: pointer;
+             border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+    button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+    section { background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+              padding: 12px 16px; margin: 16px 0; overflow-x: auto; }
+    section.problem { border-color: var(--err); background: var(--err-bg); color: var(--err); }
+    h2 { font-size: 1.05rem; margin: 4px 0 8px; }
+    p.note { color: var(--muted); margin: 4px 0 8px; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+    th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    td.nowrap { white-space: nowrap; }
+    pre, code { font: 0.82rem/1.4 ui-monospace, "SF Mono", Menlo, monospace; }
+    pre { margin: 4px 0; white-space: pre-wrap; word-break: break-word; }
+    details summary { cursor: pointer; color: var(--accent); }
+    .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.8rem; white-space: nowrap; }
+    .completo { background: var(--ok-bg); color: var(--ok); }
+    .incompleto, .en_curso { background: var(--run-bg); color: var(--run); }
+    .requiere_revision { background: var(--warn-bg); color: var(--warn); }
+    .no_corresponde { background: var(--off-bg); color: var(--off); }
+    .stats { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+    .stats b { font-size: 1.1rem; }
+    ul.plain { margin: 0; padding-left: 18px; }
+  </style>
 </head>
 <body>
-  <h1>Commission calculator</h1>
-  {% block content %}{% endblock %}
+  <header>
+    <h1>Commission calculator</h1>
+    {% set path = request.url.path %}
+    <nav>
+      <a href="/" {% if path == "/" %}aria-current="page"{% endif %}>Lines</a>
+      <a href="/partners" {% if path == "/partners" %}aria-current="page"{% endif %}>Transfers by partner</a>
+      <a href="/api/commissions">JSON</a>
+    </nav>
+    {# "Recalcular" reuses the rules already read; "Releer" asks Gemini again (D-40). #}
+    <form class="run" method="get" action="{{ path }}">
+      <button type="submit" class="primary">Recalcular</button>
+      <button type="submit" name="releer" value="1">Releer reglas con Gemini</button>
+    </form>
+  </header>
+  <main>
+    {% if r.load_error %}
+    <section class="problem">
+      <h2>Input files could not be loaded</h2>
+      <p>{{ r.load_error }}</p>
+      <p>Nothing can be calculated until the input files are fixed.</p>
+    </section>
+    {% endif %}
+    {% if r.fetch_error %}
+    <section class="problem">
+      <h2>Payments could not be fetched</h2>
+      <p>{{ r.fetch_error }}</p>
+      <p>No commission can be calculated until the payment list is complete.</p>
+    </section>
+    {% endif %}
+    {% if r.rules and r.rules.error %}
+    <section class="problem">
+      <h2>Rules could not be read</h2>
+      <p>{{ r.rules.error }}</p>
+      <p>Every deal's new payments go to review until the rules can be read.</p>
+    </section>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
 </body>
 </html>

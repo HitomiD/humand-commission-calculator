@@ -17,19 +17,7 @@ import sys
 
 from calculator.data import load_inputs
 from calculator.reference_rules import reference_rule
-from calculator.rules import read_rules
-
-
-def _describe(rule) -> str:
-    tiers = ", ".join(f"m{t.from_month}-{'∞' if t.to_month is None else f'm{t.to_month}'}: {t.pct}%"
-                      for t in rule.tiers)
-    extra = []
-    if rule.do_not_pay:
-        extra.append("no pagar")
-    if rule.fee:
-        extra.append(f"fee {rule.fee.total} {rule.fee.mode}"
-                     + (f" {rule.fee.value}" if rule.fee.value is not None else ""))
-    return f"[{tiers}]" + (f" {'; '.join(extra)}" if extra else "")
+from calculator.rules import describe_rule, read_rules
 
 
 def main() -> int:
@@ -55,11 +43,11 @@ def main() -> int:
             else:
                 outcome, wrong = "WRONG", wrong + 1
             outcomes[deal.deal_id].append(outcome)
-            print(f"{deal.deal_id} {outcome:8} {_describe(got)}")
+            print(f"{deal.deal_id} {outcome:8} {describe_rule(got)}")
             for issue in got.issues:
                 print(f"    issue: {issue}")
             if outcome == "WRONG":
-                print(f"    expected: {_describe(want)}")
+                print(f"    expected: {describe_rule(want)}")
 
     print("\n== Summary ==")
     for deal_id, results in outcomes.items():

@@ -14,7 +14,7 @@ read gets a rule with an issue, and the run goes on.
 
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 
 from google import genai
@@ -179,6 +179,9 @@ class RulesResult:
     rules: dict[str, CommissionRule]  # by deal_id
     model: str  # which model read them (D-38)
     error: str | None = None  # a problem affecting every deal, shown once
+    # What the model returned for each deal, before validation; None when it
+    # couldn't be read. Kept so the page can show every step (D-41).
+    readings: dict[str, RuleExtraction | None] = field(default_factory=dict)
 
 
 # (model, text) → reading, for as long as this instance lives (D-37). Only
@@ -202,16 +205,31 @@ def read_rules(deals: Iterable[Deal], *, refresh: bool = False) -> RulesResult:
         return RulesResult({d.deal_id: _unreadable(d, f"no se pudo leer la regla: {e}") for d in deals},
                            model, str(e))
 
-    def read(deal: Deal) -> CommissionRule:
+    def read(deal: Deal) -> tuple[CommissionRule, RuleExtraction | None]:
         text = rule_text(deal)
         key = (model, text)
         if refresh or key not in _readings:
             try:
                 _readings[key] = extract(text, api_key=api_key, model=model)
             except Exception as e:  # noqa: BLE001 — one deal's failure must not stop the run
-                return _unreadable(deal, f"no se pudo leer la regla con {model}: {type(e).__name__}: {e}")
-        return to_rule(_readings[key], deal)
+                why = f"no se pudo leer la regla con {model}: {type(e).__name__}: {e}"
+                return _unreadable(deal, why), None
+        return to_rule(_readings[key], deal), _readings[key]
 
     with ThreadPoolExecutor(max_workers=8) as pool:
-        rules = list(pool.map(read, deals))
-    return RulesResult({r.deal_id: r for r in rules}, model)
+        results = list(pool.map(read, deals))
+    return RulesResult({rule.deal_id: rule for rule, _ in results}, model,
+                       readings={rule.deal_id: reading for rule, reading in results})
+
+
+def describe_rule(rule: CommissionRule) -> str:
+    """A rule in one short line, for the page and the evaluation:
+    ``m1-m12: 50%, m13-sin fin: 30%; fee 1500 (unspecified)``."""
+    parts = [", ".join(f"{_month_range(t.from_month, t.to_month)}: {t.pct}%" for t in rule.tiers)
+             or "sin tramos"]
+    if rule.do_not_pay:
+        parts.append("no pagar")
+    if rule.fee:
+        value = "" if rule.fee.value is None else f" {rule.fee.value}"
+        parts.append(f"fee {rule.fee.total} ({rule.fee.mode}{value})")
+    return "; ".join(parts)
